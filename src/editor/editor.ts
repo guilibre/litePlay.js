@@ -1,25 +1,26 @@
-// code mirror
-import { basicSetup } from "https://esm.sh/codemirror";
-import { EditorView, keymap } from "https://esm.sh/@codemirror/view";
-import { EditorState, Prec } from "https://esm.sh/@codemirror/state";
+import { basicSetup } from "codemirror";
+import { EditorView, keymap } from "@codemirror/view";
+import { EditorState, Prec } from "@codemirror/state";
+import { javascript, javascriptLanguage } from "@codemirror/lang-javascript";
 import {
-    javascript,
-    javascriptLanguage,
-} from "https://esm.sh/@codemirror/lang-javascript";
-import { autocompletion } from "https://esm.sh/@codemirror/autocomplete";
-import { oneDark } from "https://esm.sh/@codemirror/theme-one-dark";
-// extendable media recorder
-import {
-    MediaRecorder,
-    register,
-} from "https://cdn.jsdelivr.net/npm/extendable-media-recorder/+esm";
-import { connect } from "https://cdn.jsdelivr.net/npm/extendable-media-recorder-wav-encoder/+esm";
+    autocompletion,
+    CompletionContext,
+    CompletionResult,
+} from "@codemirror/autocomplete";
+import { oneDark } from "@codemirror/theme-one-dark";
+import { MediaRecorder, register } from "extendable-media-recorder";
+import { connect } from "extendable-media-recorder-wav-encoder";
+import * as litePlayLang from "../litePlay.ts";
+import * as constants from "../litePlay.constants.ts";
 
-// override function to print output in console
-const consoleOutput = document.getElementById("console-output");
+const { getCsoundNode, reset } = litePlayLang;
+
+// override console.log to print in the on-screen textarea
+const consoleOutput = document.getElementById(
+    "console-output"
+) as HTMLTextAreaElement | null;
 const originalLog = console.log;
-
-console.log = function (...args) {
+console.log = function (...args: unknown[]) {
     originalLog.apply(console, args);
     const message = args
         .map((arg) =>
@@ -32,9 +33,8 @@ console.log = function (...args) {
     }
 };
 
-// override function to print errors in console
 const originalError = console.error;
-console.error = function (...args) {
+console.error = function (...args: unknown[]) {
     originalError.apply(console, args);
     const message = args
         .map((arg) => (arg instanceof Error ? arg.message : String(arg)))
@@ -45,19 +45,18 @@ console.error = function (...args) {
     }
 };
 
-const getDatetimeString = () => {
+const getDatetimeString = (): string => {
     const d = new Date();
     return `${d.getFullYear()}_${d.getMonth() + 1}_${d.getDate()}_${d.getHours()}-${d.getMinutes()}`;
 };
 
-// run and stop litePlay (must be before startState)
-function runLP() {
+function runLP(): boolean {
     try {
         const currentCode = editor.state.doc.toString();
         if (currentCode.trim() === "")
             throw new Error("Empty! Write something!");
-
-        eval(currentCode);
+        const func = new Function("lp", "constants", currentCode);
+        func(litePlayLang, constants);
         return true;
     } catch (error) {
         console.error(error);
@@ -65,8 +64,7 @@ function runLP() {
     }
 }
 
-// stop button
-const stopLP = async (event) => {
+const stopLP = async (): Promise<void> => {
     if (liteplayEngine) {
         console.log("Stopping audio...");
         await reset();
@@ -74,29 +72,25 @@ const stopLP = async (event) => {
     }
 };
 
-// import constants for autocompletion
-import * as litePlayLang from "../litePlay.js";
-const { getCsoundNode } = litePlayLang;
 const lpKeys = Object.keys(litePlayLang);
 
-function litePlayCompletions(context) {
-    let word = context.matchBefore(/[a-zA-Z0-9_À-ÿ]+/);
+function litePlayCompletions(
+    context: CompletionContext
+): CompletionResult | null {
+    const word = context.matchBefore(/[a-zA-Z0-9_À-ÿ]+/);
     if (!word && !context.explicit) return null;
-
     return {
         from: word ? word.from : context.pos,
         options: lpKeys.map((keyword) => {
-            // check the actual type of the exported item
-            const itemValue = litePlayLang[keyword];
+            const itemValue = (litePlayLang as Record<string, unknown>)[
+                keyword
+            ];
             const jsType = typeof itemValue;
-
-            // map JS types to CodeMirror autocomplete types
             let cmType = "variable";
             if (jsType === "function") cmType = "function";
             else if (jsType === "number" || jsType === "string")
                 cmType = "constant";
             else if (jsType === "object") cmType = "class";
-
             return {
                 label: keyword,
                 type: cmType,
@@ -107,33 +101,41 @@ function litePlayCompletions(context) {
     };
 }
 
-// CM startState
 const startState = EditorState.create({
     extensions: [
         basicSetup,
         oneDark,
         javascript(),
-        javascriptLanguage.data.of({
-            autocomplete: litePlayCompletions,
-        }),
+        javascriptLanguage.data.of({ autocomplete: litePlayCompletions }),
         autocompletion(),
         Prec.highest(
             keymap.of([
                 { key: "Mod-Enter", run: runLP },
-                { key: "Mod-.", run: stopLP },
-                { key: "Mod-r", run: startRecording },
+                {
+                    key: "Mod-.",
+                    run: () => {
+                        stopLP();
+                        return true;
+                    },
+                },
+                {
+                    key: "Mod-r",
+                    run: () => {
+                        startRecording();
+                        return true;
+                    },
+                },
             ])
         ),
     ],
 });
 
-let editor = new EditorView({
+const editor = new EditorView({
     state: startState,
-    parent: document.getElementById("editor-container"),
+    parent: document.getElementById("editor-container") as HTMLElement,
 });
 
-// start litePlay
-let liteplayEngine = null;
+let liteplayEngine: typeof litePlayLang | null = null;
 
 document.addEventListener(
     "pointerdown",
@@ -141,16 +143,12 @@ document.addEventListener(
         if (!liteplayEngine) {
             try {
                 console.log("Loading litePlay engine...");
-                liteplayEngine = await lpLoad();
-
-                // expose all of litePlay.js exports to the global window
-                Object.assign(window, liteplayEngine);
+                await litePlayLang.startEngine();
+                liteplayEngine = litePlayLang;
+                Object.assign(window, litePlayLang);
                 console.log("litePlay is ready!");
-
-                // change button colors when ready
                 const runBtn = document.getElementById("run-btn");
                 if (runBtn) runBtn.classList.add("ready-green");
-
                 const recBtn = document.getElementById("rec-btn");
                 if (recBtn) recBtn.classList.add("ready-red");
             } catch (error) {
@@ -161,97 +159,72 @@ document.addEventListener(
     { once: true }
 );
 
-// save button
-const saveCode = () => {
-    const datetime = getDatetimeString();
-
+const saveCode = (): void => {
     const text = editor.state.doc.toString();
     const blob = new Blob([text], { type: "text/javascript" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "litePlay" + datetime + ".js";
+    a.download = "litePlay" + getDatetimeString() + ".js";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
 };
 
-// recording feature (extendable mediaRecorder)
-let mediaRecorder = null;
-let audioChunks = [];
-let connectedCsoundNode = null;
-let destNode = null;
+let mediaRecorder: InstanceType<typeof MediaRecorder> | null = null;
+let audioChunks: Blob[] = [];
+let connectedCsoundNode: AudioNode | null = null;
+let destNode: MediaStreamAudioDestinationNode | null = null;
 let encoderRegistered = false;
 
-async function startRecording() {
+async function startRecording(): Promise<void> {
+    const lp = litePlayLang;
     if (
-        !window.audio_context ||
-        !window.csound ||
+        !lp.audio_context ||
+        !lp.csound ||
         (mediaRecorder && mediaRecorder.state === "recording")
     ) {
         console.error("Engine not ready or already recording.");
         return;
     }
-
     try {
         if (!encoderRegistered) {
             await register(await connect());
             encoderRegistered = true;
         }
-
         connectedCsoundNode = await getCsoundNode();
-        destNode = window.audio_context.createMediaStreamDestination();
+        destNode = lp.audio_context.createMediaStreamDestination();
         connectedCsoundNode.connect(destNode);
 
-        const targetSampleRate = 41000;
-        const resampleContext = new (
-            window.AudioContext || window.webkitAudioContext
-        )({
-            sampleRate: targetSampleRate,
-        });
+        const resampleContext = new AudioContext({ sampleRate: 41000 });
         const sourceNode = resampleContext.createMediaStreamSource(
             destNode.stream
         );
-        const resampledDestNode =
-            resampleContext.createMediaStreamDestination();
+        const resampledDest = resampleContext.createMediaStreamDestination();
+        sourceNode.connect(resampledDest);
 
-        sourceNode.connect(resampledDestNode);
-        mediaRecorder = new MediaRecorder(resampledDestNode.stream, {
+        mediaRecorder = new MediaRecorder(resampledDest.stream, {
             mimeType: "audio/wav",
         });
-
         audioChunks = [];
         mediaRecorder.ondataavailable = (event) => {
-            if (event.data.size > 0) {
-                audioChunks.push(event.data);
-            }
+            if (event.data.size > 0) audioChunks.push(event.data);
         };
-
         mediaRecorder.onstop = () => {
             const audioBlob = new Blob(audioChunks, { type: "audio/wav" });
             const audioUrl = URL.createObjectURL(audioBlob);
-
-            const now = new Date();
-            const datetime = `${now.getFullYear()}_${now.getMonth() + 1}_${now.getDate()}_${now.getHours()}-${now.getMinutes()}`;
             const link = document.createElement("a");
-
             link.href = audioUrl;
-            link.download = "litePlay_" + datetime + ".wav";
+            link.download = "litePlay_" + getDatetimeString() + ".wav";
             document.body.appendChild(link);
             link.click();
             link.remove();
             URL.revokeObjectURL(audioUrl);
-
-            if (connectedCsoundNode && destNode) {
+            if (connectedCsoundNode && destNode)
                 connectedCsoundNode.disconnect(destNode);
-            }
-
-            if (resampleContext.state !== "closed") {
-                resampleContext.close();
-            }
+            if (resampleContext.state !== "closed") resampleContext.close();
         };
-
         mediaRecorder.start();
         console.log("Recording started...");
     } catch (err) {
@@ -259,25 +232,30 @@ async function startRecording() {
     }
 }
 
-function stopRecording() {
+function stopRecording(): void {
     if (mediaRecorder && mediaRecorder.state === "recording") {
         mediaRecorder.stop();
         console.log("Recording stopped! Downloading sound file...");
     }
 }
 
-// buttons actions
-const runButton = document.querySelector("#run-btn");
-runButton.addEventListener("click", runLP);
-
-const stopButton = document.querySelector("#stop-btn");
-stopButton.addEventListener("click", stopLP);
-
-const saveButton = document.querySelector("#save-btn");
-saveButton.addEventListener("click", saveCode);
-
-const recButton = document.querySelector("#rec-btn");
-recButton.addEventListener("click", startRecording);
-
-const stopRecButton = document.querySelector("#stopRec-btn");
-stopRecButton.addEventListener("click", stopRecording);
+(document.querySelector("#run-btn") as HTMLButtonElement).addEventListener(
+    "click",
+    runLP
+);
+(document.querySelector("#stop-btn") as HTMLButtonElement).addEventListener(
+    "click",
+    stopLP
+);
+(document.querySelector("#save-btn") as HTMLButtonElement).addEventListener(
+    "click",
+    saveCode
+);
+(document.querySelector("#rec-btn") as HTMLButtonElement).addEventListener(
+    "click",
+    startRecording
+);
+(document.querySelector("#stopRec-btn") as HTMLButtonElement).addEventListener(
+    "click",
+    stopRecording
+);

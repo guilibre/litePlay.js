@@ -1,65 +1,52 @@
 # litePlay.js
 
 This repo contains the source files for litePlay.js, an experimental platform
-for lite coding, is based on the following off-the-shelf technologies
+for live coding, based on the following technologies:
 
-- Csound
-- JavaScript/Web Audio
+- [Csound](https://csound.com/) (via `@csound/browser`)
+- TypeScript / Web Audio API
+- Vite
 
-There is no need to install anything, as the system is designed to be
-served from online sources and runs inside your browser.
+There is no need to install anything to use it — the editor runs entirely in
+your browser.
 
-You can start by looking at the following sketches in the P5.js editor:
+## Online editor
 
-[Introducing litePlay.js](https://editor.p5js.org/vlazzarini/sketches/gSpXKc2sX)
+A dedicated online editor for litePlay is available at:
 
-[Sequencer example](https://editor.p5js.org/vlazzarini/sketches/c4PhzF39r)
+**[https://guilibre.github.io/litePlay.js/](https://guilibre.github.io/litePlay.js/)**
 
-LitePlay's [documentation](https://g-ubimus.github.io/litePlay.docs/) is
-available both in English and Portuguese. This is a work-in-progress, which
-aims to cover the complete system.
+Click anywhere on the page to start the audio engine, write your code, and hit
+**RUN** or **Ctrl+Enter**. Use **STOP** or **Ctrl+.** to stop all sounds.
 
-To use it in a web page, add this tag to the HTML page header:
+## Quick example
 
-```
-<script  src="https://g-ubimus.github.io/litePlay.js/litePlay.constants.js"></script>
-```
-
-To play the default piano sound in litePlay, try:
-
-```
-function f() {
-	lp.play(C4);
-}
-
-lpRun(f);
-```
-
-## Running locally
-
-To run the project locally, you need to spin up a quick web server.
-
-**Prerequisites:**
-
-- You must have [Node.js](https://nodejs.org/) installed on your computer.
-
-**Steps to run:**
-
-1. **Open your terminal** on the root folder of this repository.
-2. **Start the local server** by running the following command (no installation
-   required):
-
-```bash
-npx serve
-```
-
-3. In this context, all litePlay's exports are available to use without the
-   need to add its prefix:
-
-```JavaScript
+```javascript
 play(C4);
 ```
 
-## litePlay.js editor
+```javascript
+sequencer.add(piano, [C4, E4, G4, C5]);
+sequencer.play();
+```
 
-A dedicated online editor for litePlay is available [here](https://g-ubimus.github.io/litePlay.js/).
+LitePlay's [documentation](https://g-ubimus.github.io/litePlay.docs/) is
+available in English and Portuguese.
+
+## Running locally
+
+**Prerequisites:** [Node.js](https://nodejs.org/) installed.
+
+```bash
+npm install
+npm run dev
+```
+
+Then open the URL shown in the terminal.
+
+## Building and deploying
+
+```bash
+npm run build    # compiles to dist/
+npm run deploy   # builds and pushes to gh-pages
+```

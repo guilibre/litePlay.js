@@ -1,25 +1,41 @@
-// csound.js is the Csound WASM module
-const csoundjs =
-    "https://cdn.jsdelivr.net/npm/@csound/browser@6.18.5/dist/csound.js";
-// csound is the Csound engine object (null as we start)
-export let csound = null;
+import { Csound } from "@csound/browser";
 
-const csoundProxy = new Proxy(
-    {},
-    {
-        get(_, prop) {
-            if (csound == null)
-                throw new Error(
-                    "Csound engine not started. Call startEngine() first."
-                );
-            const val = csound[prop];
-            return typeof val === "function" ? val.bind(csound) : val;
-        },
-    }
-);
-const resolve = (val) => (typeof val === "function" ? val() : val);
+// Minimal Csound WASM interface
+interface CsoundInstance {
+    midiMessage(stat: number, b1: number, b2: number): void;
+    tableSet(table: number, index: number, value: number): void;
+    inputMessage(score: string): Promise<void>;
+    compileCSD(csd: string): Promise<number>;
+    start(): Promise<void>;
+    setOption(opt: string): Promise<void>;
+    getAudioContext(): Promise<AudioContext>;
+    getNode(): Promise<AudioNode>;
+    fs: { writeFile(path: string, data: Uint8Array): Promise<void> };
+}
 
-const DRUM_INSTR = {
+export let csound: CsoundInstance | null = null;
+export let audio_context: AudioContext | null = null;
+
+const csoundProxy = new Proxy({} as CsoundInstance, {
+    get(_: CsoundInstance, prop: string | symbol) {
+        if (csound == null)
+            throw new Error(
+                "Csound engine not started. Call startEngine() first."
+            );
+        const val = (csound as unknown as Record<string | symbol, unknown>)[
+            prop
+        ];
+        return typeof val === "function"
+            ? (val as (...a: unknown[]) => unknown).bind(csound)
+            : val;
+    },
+});
+
+type Resolvable<T> = T | (() => T);
+const resolve = <T>(val: Resolvable<T>): T =>
+    typeof val === "function" ? (val as () => T)() : val;
+
+const DRUM_INSTR: Record<number, number> = {
     29: 10.97,
     30: 10.97,
     42: 10.91,
@@ -38,28 +54,35 @@ const DRUM_INSTR = {
     87: 10.96,
 };
 
-// audio context
-export let audio_context = null;
-// source URL for assets
-const srcurl = "https://g-ubimus.github.io/litePlay.js/";
-// CSD file name
-const csd = "./litePlay.csd";
-const sfont = "./gm.sf2";
+const csdUrl = import.meta.env.BASE_URL + "litePlay.csd";
+const sfontUrl = import.meta.env.BASE_URL + "gm.sf2";
 
-// this is the JS function to start Csound
-export async function startEngine() {
+interface GlobalObj {
+    freeChannel: number;
+    maxChannel: number;
+    BPM: number;
+    sampnum: number;
+}
+
+const globalObj: GlobalObj = {
+    freeChannel: 16,
+    maxChannel: 100,
+    BPM: 60.0,
+    sampnum: 0,
+};
+
+export async function startEngine(): Promise<void> {
     if (csound == null) {
         try {
-            const { Csound } = await import(csoundjs);
-            csound = await Csound();
-            audio_context = await csound.getAudioContext();
-            await csound.setOption("-odac");
-            await csound.setOption("-M0");
-            await copyUrlToLocal(srcurl + sfont, sfont);
-            await copyUrlToLocal(srcurl + csd, csd);
-            const result = await csound.compileCsd(csd);
+            csound = (await Csound()) as unknown as CsoundInstance;
+            audio_context = await csound!.getAudioContext();
+            await csound!.setOption("-odac");
+            await csound!.setOption("-M0");
+            await loadToFs(sfontUrl, "gm.sf2");
+            const csdText = await fetchText(csdUrl);
+            const result = await csound!.compileCSD(csdText);
             if (result !== 0) throw new Error("Csound CSD compilation failed.");
-            await csound.start();
+            await csound!.start();
         } catch (err) {
             csound = null;
             throw err;
@@ -67,18 +90,20 @@ export async function startEngine() {
     }
 }
 
-// copy URL to local file
-async function copyUrlToLocal(src, dest) {
-    // fetch the file
-    const srcfile = await fetch(src, { cache: "no-store" });
-    // get the file data as an array
-    const dat = await srcfile.arrayBuffer();
-    // write the data as a new file in the filesystem
+async function fetchText(src: string): Promise<string> {
+    const res = await fetch(src);
+    if (!res.ok) throw new Error(`Failed to fetch ${src}: ${res.status}`);
+    return res.text();
+}
+
+async function loadToFs(src: string, dest: string): Promise<void> {
+    const res = await fetch(src);
+    if (!res.ok) throw new Error(`Failed to fetch ${src}: ${res.status}`);
+    const dat = await res.arrayBuffer();
     await csoundProxy.fs.writeFile(dest, new Uint8Array(dat));
 }
 
-// generic midi message
-export function midi(stat, b1, b2) {
+export function midi(stat: number, b1: number, b2: number): void {
     if (stat < 0 || stat > 255 || b1 < 0 || b1 > 127 || b2 < 0 || b2 > 127)
         throw new RangeError(
             "MIDI values must be in range 0-127 (0-255 for status)."
@@ -86,22 +111,31 @@ export function midi(stat, b1, b2) {
     csoundProxy.midiMessage(stat, b1, b2);
 }
 
-// midi program message
-export function midiProgram(n, chn = 1) {
+export function midiProgram(n: number, chn = 1): void {
     if (chn >= 1 && chn <= 16) csoundProxy.midiMessage(chn + 191, n, 0);
 }
 
-// litePlay.js global parameters
-const globalObj = {
-    freeChannel: 16, // channels 0 to 15 are for device MIDI
-    maxChannel: 100,
-    BPM: 60.0,
-    sampnum: 0,
-};
+// Event types
+export type EventValue = Resolvable<number>;
+export type EventTuple =
+    | [EventValue]
+    | [EventValue, EventValue]
+    | [EventValue, EventValue, EventValue]
+    | [EventValue, EventValue, EventValue, EventValue]
+    | [EventValue, EventValue, EventValue, EventValue, Resolvable<Instrument>];
+export type SeqEvent = EventValue | EventTuple | EventTuple[];
 
-// Csound instrument class
 export class Instrument {
-    constructor(pgm, isDrums = false, what = 60.0, instr = 10) {
+    pgm: number;
+    chn: number;
+    isDrums: boolean;
+    what_: number;
+    howLoud: number;
+    howLong: number;
+    on: Uint8Array;
+    instr: number;
+
+    constructor(pgm: number, isDrums = false, what = 60.0, instr = 10) {
         this.pgm = pgm;
         this.chn = globalObj.freeChannel;
         globalObj.freeChannel =
@@ -116,15 +150,20 @@ export class Instrument {
         this.instr = instr;
     }
 
-    _clamp(v, min = 0, max = 1) {
+    _clamp(v: number, min = 0, max = 1): number {
         return v < min ? min : v > max ? max : v;
     }
 
-    what(snd) {
+    what(snd: number): void {
         this.what_ = snd;
     }
 
-    score(what, howLoud, when, howLong) {
+    score(
+        what: number,
+        howLoud: number,
+        when: number,
+        howLong: number
+    ): string {
         let prog = this.pgm;
         let instr =
             this.instr + what / 1000000 + this.chn / globalObj.maxChannel;
@@ -160,36 +199,42 @@ export class Instrument {
         );
     }
 
-    event(what, howLoud = this.howLoud, when = 0, howLong = this.howLong) {
+    event(
+        what: number,
+        howLoud = this.howLoud,
+        when = 0,
+        howLong = this.howLong
+    ): EventTuple {
         return [what, howLoud, when, howLong, this];
     }
 
-    play(...evtLst) {
-        const instr = this.instr;
+    play(...evtLst: (SeqEvent | number[])[]): void {
         let amp = this.howLoud,
             dur = 0,
             when = 0,
-            what,
+            what: number,
             mess = "";
         if (evtLst.length == 0) {
             mess += this.score(this.what_, this.howLoud, 0, 0);
         } else {
             for (const evt of evtLst) {
-                if (typeof evt === "object" && typeof evt !== "function") {
-                    what = resolve(evt[0]);
-                    dur = resolve(evt.length > 3 ? evt[3] : 1);
-                    when = resolve(evt.length > 2 ? evt[2] : 0);
-                    amp = resolve(evt.length > 1 ? evt[1] : amp);
+                if (Array.isArray(evt)) {
+                    what = resolve(evt[0] as EventValue);
+                    dur = resolve((evt.length > 3 ? evt[3] : 1) as EventValue);
+                    when = resolve((evt.length > 2 ? evt[2] : 0) as EventValue);
+                    amp = resolve(
+                        (evt.length > 1 ? evt[1] : amp) as EventValue
+                    );
                 } else {
-                    what = resolve(evt);
+                    what = resolve(evt as EventValue);
                 }
-                mess += this.score(what, amp, when, dur);
+                mess += this.score(what!, amp, when, dur);
             }
         }
         csoundProxy.inputMessage(mess);
     }
 
-    stop(...evtLst) {
+    stop(...evtLst: (SeqEvent | number[])[]): void {
         let mess = "";
         if (evtLst.length == 0) {
             for (let what = 0; what < 128; what++) {
@@ -199,44 +244,51 @@ export class Instrument {
             }
         } else {
             for (const evt of evtLst) {
-                let what,
+                let what: number,
                     when = 0;
-                if (typeof evt === "object") {
-                    what = evt[0];
-                    when = evt.length > 2 ? evt[2] : 0;
-                } else what = evt;
+                if (Array.isArray(evt)) {
+                    what = evt[0] as number;
+                    when = evt.length > 2 ? (evt[2] as number) : 0;
+                } else {
+                    what = evt as number;
+                }
                 mess += this.score(what, 0, when, 0);
             }
         }
         csoundProxy.inputMessage(mess);
     }
 
-    bend(amount) {
-        const val = 2 ** (amount / 12);
-        csoundProxy.tableSet(14, this.chn, val);
+    bend(amount: number): void {
+        csoundProxy.tableSet(14, this.chn, 2 ** (amount / 12));
     }
 
-    reverb(amount) {
+    reverb(amount: number): void {
         csoundProxy.tableSet(8, this.chn, amount);
     }
 
-    cutoff(amount) {
+    cutoff(amount: number): void {
         csoundProxy.tableSet(17, this.chn, this._clamp(amount));
     }
 
-    resonance(amount) {
+    resonance(amount: number): void {
         csoundProxy.tableSet(18, this.chn, this._clamp(amount));
     }
 
-    pan(amount) {
+    pan(amount: number): void {
         csoundProxy.tableSet(3, this.chn, this._clamp(amount) * 127);
     }
 
-    volume(amount) {
+    volume(amount: number): void {
         csoundProxy.tableSet(2, this.chn, this._clamp(amount) * 127);
     }
 
-    filterEnvelope(amount, att, dec, sus, rel) {
+    filterEnvelope(
+        amount: number,
+        att: number,
+        dec: number,
+        sus: number,
+        rel: number
+    ): void {
         csoundProxy.tableSet(19, this.chn, att);
         csoundProxy.tableSet(20, this.chn, dec);
         csoundProxy.tableSet(21, this.chn, sus);
@@ -244,7 +296,7 @@ export class Instrument {
         csoundProxy.tableSet(27, this.chn, amount);
     }
 
-    ampEnvelope(att, dec, sus, rel) {
+    ampEnvelope(att: number, dec: number, sus: number, rel: number): void {
         csoundProxy.tableSet(23, this.chn, att);
         csoundProxy.tableSet(24, this.chn, dec);
         csoundProxy.tableSet(25, this.chn, sus);
@@ -252,122 +304,177 @@ export class Instrument {
     }
 }
 
-export const sample = {
+interface SampleObj {
+    number: number;
+    fo: number;
+    bpm: number;
+    instr: Sampler | null;
+    load(what: string, fo?: number, bpm?: number): void;
+    loop(start: number, end: number): void;
+    create(what?: string | null, fo?: number, bpm?: number): SampleObj;
+    play(...evtList: (SeqEvent | number[])[]): void;
+    instrument(what?: string | null, fo?: number, bpm?: number): Sampler;
+}
+
+export const sample: SampleObj = {
     number: 0,
     fo: 60,
     bpm: 60,
     instr: null,
-    load: function (what, fo = 60, bpm = 0) {
+    load(what: string, fo = 60, bpm = 0) {
         this.fo = fo;
         this.bpm = bpm;
-        copyUrlToLocal(what, "localfile").then(() => {
+        loadToFs(what, "localfile").then(() => {
             csoundProxy.inputMessage(
                 "i2 0 0" + ' "localfile" ' + this.fo + " " + this.number
             );
             if (bpm > 0) csoundProxy.tableSet(15, this.number, getBpm() / bpm);
         });
     },
-    loop: function (start, end) {
+    loop(start: number, end: number) {
         csoundProxy.tableSet(11, this.number, start);
         csoundProxy.tableSet(12, this.number, end);
     },
-    create: function (what = null, fo = 60, bpm = 0) {
-        let e = Object.create(sample);
+    create(what: string | null = null, fo = 60, bpm = 0): SampleObj {
+        const e: SampleObj = Object.create(sample);
         e.number = globalObj.sampnum++;
         if (what) e.load(what, fo, bpm);
         e.instr = new Sampler(e);
         return e;
     },
-    play: function (...evtList) {
-        this.instr.play(...evtList);
+    play(...evtList: (SeqEvent | number[])[]) {
+        this.instr!.play(...evtList);
     },
-    instrument: function (what = null, fo = 60, bpm = 0) {
-        if (this.instr == null) return this.create(what, fo, bpm).instr;
+    instrument(what: string | null = null, fo = 60, bpm = 0): Sampler {
+        if (this.instr == null) return this.create(what, fo, bpm).instr!;
         else return this.instr;
     },
 };
 
 export class Sampler extends Instrument {
-    constructor(pgm, isDrums = false, what = pgm.fo) {
+    sample: SampleObj;
+
+    constructor(pgm: SampleObj, isDrums = false, what = pgm.fo) {
         super(pgm.number, isDrums, what, 12);
         this.sample = pgm;
     }
-    play(...evtLst) {
+
+    play(...evtLst: (SeqEvent | number[])[]): void {
         if (this.sample.bpm > 0)
-            csoundProxy.tableSet(15, this.number, getBpm() / this.sample.bpm);
+            csoundProxy.tableSet(
+                15,
+                this.sample.number,
+                getBpm() / this.sample.bpm
+            );
         super.play(...evtLst);
     }
-    speed(val) {
+
+    speed(val: number): void {
         csoundProxy.tableSet(16, this.chn, val);
     }
 }
 
-function isInstr(instr) {
+function isInstr(instr: unknown): instr is Instrument {
     return instr instanceof Instrument;
 }
 
-// return seconds from beats
-export function secs(b) {
+export function secs(b: number): number {
     return (b * 60.0) / globalObj.BPM;
 }
 
-// return beats from seconds
-export function beats(s) {
+export function beats(s: number): number {
     return (s * globalObj.BPM) / 60.0;
 }
 
-// set beats per minute
-export function setBpm(bpm) {
+export function setBpm(bpm: number): void {
     globalObj.BPM = bpm;
 }
 
-// returns beats per minute
-export function getBpm() {
+export function getBpm(): number {
     return globalObj.BPM;
 }
 
-// current audio clock time
-export function audioClock() {
-    if (audio_context) return audio_context.currentTime;
-    else return 0;
+export function audioClock(): number {
+    return audio_context ? audio_context.currentTime : 0;
 }
 
-// sequencer object
-export const sequencer = {
+interface SequenceTrack {
+    id: number;
+    instr: Instrument;
+    what: SeqEvent[];
+    amp: number;
+    bbs: number;
+    n: number;
+    on: boolean;
+    play(sched: number): void;
+}
+
+interface Sequencer {
+    clickOn: boolean;
+    seqList: SequenceTrack[];
+    idcnt: number;
+    time: number;
+    callbacks: ((t: number) => void)[];
+    addCallback(x: (t: number) => void): void;
+    clearCallbacks(): void;
+    click(ref: number): void;
+    sequence(
+        i: Instrument,
+        w: SeqEvent[],
+        a: number,
+        b: number,
+        j: number
+    ): SequenceTrack;
+    add(
+        instr: Instrument,
+        what: SeqEvent[],
+        howLoud?: number,
+        bbs?: number
+    ): number;
+    play(): void;
+    stop(): void;
+    clear(): void;
+    togglePause(): void;
+    toggleMute(id?: number): void;
+    toggleSolo(id: number): void;
+    clock(): number;
+    isRunning(): boolean;
+    remove(id: number): void;
+}
+
+export const sequencer: Sequencer = {
     clickOn: false,
     seqList: [],
     idcnt: 0,
     time: 0.0,
     callbacks: [],
-    addCallback: function (x) {
+    addCallback(x) {
         this.callbacks.push(x);
     },
-    clearCallbacks: function () {
+    clearCallbacks() {
         this.callbacks = [];
     },
-    click: function (ref) {
+    click(ref) {
         if (!this.clickOn) return;
         try {
-            let t = secs(1);
-            let delta = audioClock() - (t + ref);
+            const t = secs(1);
+            const delta = audioClock() - (t + ref);
             if (delta >= 0) {
                 this.time = t + audioClock() - delta;
-                this.seqList.forEach((v) => {
-                    v.play(beats(t - delta));
-                });
+                this.seqList.forEach((v) => v.play(beats(t - delta)));
                 const cbs = [...this.callbacks];
                 this.callbacks = [];
-                cbs.forEach((v) => {
-                    v(beats(t - delta));
-                });
+                cbs.forEach((v) => v(beats(t - delta)));
                 setTimeout(this.click.bind(this, audioClock() - delta));
-            } else setTimeout(this.click.bind(this, ref));
+            } else {
+                setTimeout(this.click.bind(this, ref));
+            }
         } catch (err) {
             console.error("Sequencer error:", err);
             this.stop();
         }
     },
-    sequence: function (i, w, a, b, j) {
+    sequence(i, w, a, b, j) {
         return {
             id: j,
             instr: i,
@@ -376,33 +483,37 @@ export const sequencer = {
             bbs: b,
             n: 0,
             on: true,
-            play: function (sched) {
+            play(sched) {
                 const what = this.what,
                     bbs = this.bbs;
-                let pp,
-                    amp,
+                let pp: number,
                     theInstr = this.instr,
-                    dur = theInstr.isDrums ? 0 : this.bbs;
+                    dur = theInstr.isDrums ? 0 : bbs;
                 for (let i = 0; i < 1 / bbs; i++) {
-                    let evt = what[this.n];
-                    amp = this.amp;
+                    const evt = what[this.n];
+                    let amp = this.amp;
                     this.n = this.n != what.length - 1 ? this.n + 1 : 0;
-                    if (typeof evt !== "object") {
-                        pp = resolve(evt);
+                    if (!Array.isArray(evt)) {
+                        pp = resolve(evt as EventValue);
                         if (sched >= 0 && pp >= 0 && this.on)
                             theInstr.play([pp, amp, sched + i * bbs, dur]);
                     } else {
-                        const applyEl = (el, baseSched) => {
+                        const applyEl = (el: unknown[], baseSched: number) => {
                             let elAmp = this.amp;
                             let elInstr = this.instr;
                             let elDur = elInstr.isDrums ? 0 : bbs;
                             let elSched = baseSched;
-                            pp = resolve(el[0]);
-                            if (el.length > 1) elAmp *= resolve(el[1]);
-                            if (el.length > 2) elSched += resolve(el[2]);
-                            if (el.length > 3) elDur = resolve(el[3]);
+                            pp = resolve(el[0] as EventValue);
+                            if (el.length > 1)
+                                elAmp *= resolve(el[1] as EventValue);
+                            if (el.length > 2)
+                                elSched += resolve(el[2] as EventValue);
+                            if (el.length > 3)
+                                elDur = resolve(el[3] as EventValue);
                             if (el.length > 4) {
-                                elInstr = resolve(el[4]);
+                                elInstr = resolve(
+                                    el[4] as Resolvable<Instrument>
+                                );
                                 elInstr = isInstr(elInstr)
                                     ? elInstr
                                     : this.instr;
@@ -421,284 +532,260 @@ export const sequencer = {
                                     elDur,
                                 ]);
                         };
-                        if (typeof evt[0] !== "object") {
-                            applyEl(evt, sched);
+                        if (!Array.isArray(evt[0])) {
+                            applyEl(evt as unknown[], sched);
                         } else {
-                            for (const el of evt) applyEl(el, sched);
+                            for (const el of evt as unknown[][])
+                                applyEl(el, sched);
                         }
                     }
                 }
             },
         };
     },
-    add: function (instr, what, howLoud = 1, bbs = 1) {
+    add(instr, what, howLoud = 1, bbs = 1) {
         if (isInstr(instr)) {
-            let id = this.idcnt++;
+            const id = this.idcnt++;
             if (bbs > 1) bbs = 1;
             this.seqList.push(this.sequence(instr, what, howLoud, bbs, id));
             return id;
-        } else return -1;
+        }
+        return -1;
     },
-    play: function () {
+    play() {
         if (!this.clickOn) {
             this.clickOn = true;
             this.click(audioClock());
         }
     },
-    stop: function () {
+    stop() {
         this.clickOn = false;
-        this.seqList.forEach((v, i, a) => {
+        this.seqList.forEach((v) => {
             v.n = 0;
         });
     },
-    clear: function () {
+    clear() {
         this.seqList = [];
     },
-    togglePause: function () {
+    togglePause() {
         this.clickOn = !this.clickOn;
         this.click(audioClock());
     },
-    toggleMute: function (id = -1) {
-        this.seqList.forEach((v, i, a) => {
+    toggleMute(id = -1) {
+        this.seqList.forEach((v) => {
             if (id < 0 || v.id == id) v.on = !v.on;
         });
     },
-    toggleSolo: function (id) {
-        this.seqList.forEach((v, i, a) => {
+    toggleSolo(id) {
+        this.seqList.forEach((v) => {
             if (v.id != id) v.on = !v.on;
         });
     },
-    clock: function () {
+    clock() {
         return this.time;
     },
-    isRunning: function () {
+    isRunning() {
         return this.clickOn;
     },
-    remove: function (id) {
-        this.seqList.forEach((v, i, a) => {
+    remove(id) {
+        this.seqList.forEach((v, i) => {
             if (v.id == id) this.seqList.splice(i, 1);
         });
     },
 };
 
-// eventList object
-export const eventList = {
+interface ScoreResult {
+    score: string;
+    play(): void;
+}
+
+interface EventListObj {
+    events: SeqEvent[];
+    maxdur: number;
+    play(when?: number, evtLst?: SeqEvent[]): number;
+    create(...evtLst: SeqEvent[]): EventListObj;
+    score(when?: number, evtLst?: SeqEvent[]): ScoreResult;
+    repeat(times?: number, when?: number): number;
+    add(...evtLst: SeqEvent[]): void;
+    clear(): void;
+    remove(ndx?: number): void;
+    insert(pos: number, ...evtLst: SeqEvent[]): void;
+}
+
+export const eventList: EventListObj = {
     events: [],
-    play: function (when = 0, evtLst = this.events) {
+    maxdur: 0,
+    play(this: EventListObj, when = 0, evtLst = this.events) {
         this.score(when, evtLst).play();
         this.events = evtLst;
         return this.maxdur + when;
     },
-    create: function (...evtLst) {
-        let e = Object.create(eventList);
+    create(this: EventListObj, ...evtLst: SeqEvent[]) {
+        const e: EventListObj = Object.create(eventList);
         e.events = evtLst;
         return e;
     },
-    score: function (when = 0, evtLst = this.events) {
+    score(this: EventListObj, when = 0, evtLst = this.events) {
         let mess = "";
-        let instr,
-            amp,
-            dur,
+        let instr: Instrument,
+            amp: number,
+            dur: number,
             etime = 0,
             time = when,
-            what;
+            what: number;
         this.maxdur = 0;
         for (const evt of evtLst) {
-            if (typeof evt === "object" && typeof evt !== "function") {
-                what = resolve(evt[0]);
-                instr = resolve(evt.length > 4 ? evt[4] : defInstr);
+            if (Array.isArray(evt)) {
+                what = resolve(evt[0] as EventValue);
+                instr = resolve(
+                    (evt.length > 4
+                        ? evt[4]
+                        : defInstr) as Resolvable<Instrument>
+                );
                 instr = isInstr(instr) ? instr : defInstr;
-                dur = resolve(evt.length > 3 ? evt[3] : instr.howLong);
-                etime = resolve(evt.length > 2 ? evt[2] : 0);
+                dur = resolve(
+                    (evt.length > 3 ? evt[3] : instr.howLong) as EventValue
+                );
+                etime = resolve((evt.length > 2 ? evt[2] : 0) as EventValue);
                 time = etime + when;
-                amp = resolve(evt.length > 1 ? evt[1] : instr.howLoud);
+                amp = resolve(
+                    (evt.length > 1 ? evt[1] : instr.howLoud) as EventValue
+                );
             } else {
-                what = resolve(evt);
+                what = resolve(evt as EventValue);
                 instr = defInstr;
                 amp = instr.howLoud;
                 dur = instr.howLong;
                 etime = time;
             }
-            let totdur = etime + dur;
-            if (what >= 0) mess += instr.score(what, amp, time, dur);
+            const totdur = etime + dur!;
+            if (what! >= 0) mess += instr!.score(what!, amp!, time, dur!);
             if (totdur > this.maxdur) this.maxdur = totdur;
-            time += dur;
+            time += dur!;
         }
         return {
             score: mess,
-            play: function () {
+            play() {
                 csoundProxy.inputMessage(this.score);
             },
         };
     },
-    repeat: function (times = 1, when = 0) {
+    repeat(times = 1, when = 0) {
         let next = when;
         for (let i = 0; i < times; i++) next = this.play(next);
         return next;
     },
-    add: function (...evtLst) {
+    add(...evtLst) {
         for (const evt of evtLst) this.events.push(evt);
     },
-    clear: function () {
+    clear() {
         this.events = [];
     },
-    remove: function (ndx = -1) {
+    remove(ndx = -1) {
         if (ndx < 0) this.events.pop();
         else this.events.splice(ndx, 1);
     },
-    insert: function (pos, ...evtLst) {
-        let start = pos;
+    insert(pos, ...evtLst) {
         for (const evt of evtLst) this.events.splice(pos, 0, evt);
     },
 };
 
-// generic play
-export function play(...theList) {
-    if (typeof theList[0] === "function") return play(theList[0]());
+export function play(
+    ...theList: (SeqEvent | Instrument)[]
+): SeqEvent[] | Instrument {
+    if (typeof theList[0] === "function")
+        return play(...(theList[0] as unknown as () => SeqEvent[])());
     if (isInstr(theList[0])) {
         theList[0].play();
         return theList[0];
     }
     if (theList.length > 0) {
-        eventList.create().play(0, theList);
-        return theList;
-    } else {
-        defInstr.play();
-        return defInstr;
+        eventList.create().play(0, theList as SeqEvent[]);
+        return theList as SeqEvent[];
     }
+    defInstr.play();
+    return defInstr;
 }
 
-// set default instrument
-export function instrument(instr) {
-    if (typeof instr[0] === "function") return instrument(instr[0]());
+export function instrument(instr: Instrument | SeqEvent[]): Instrument {
+    if (Array.isArray(instr) && typeof instr[0] === "function")
+        return instrument((instr[0] as unknown as () => Instrument)());
     if (isInstr(instr)) defInstr = instr;
     return defInstr;
 }
 
-export function stop() {
+export function stop(): void {
     defInstr.stop();
 }
 
-export async function reset() {
-    if (csound) {
-        await csoundProxy.inputMessage("i 200 0 0.1");
-    }
+export async function reset(): Promise<void> {
+    if (csound) await csoundProxy.inputMessage("i 200 0 0.1");
 }
 
-export async function getCsoundNode() {
+export async function getCsoundNode(): Promise<AudioNode> {
     return csoundProxy.getNode();
 }
 
-export const rnd = (min, max) => Math.random() * (max - min) + min;
+export const rnd = (min: number, max: number): number =>
+    Math.random() * (max - min) + min;
 
-export const rndInt = (min, max) =>
+export const rndInt = (min: number, max: number): number =>
     Math.floor(
         Math.random() * (Math.floor(max) - Math.ceil(min)) + Math.ceil(min)
     );
 
-export const choose = (array) => {
-    let index = Math.floor(Math.random() * array.length);
-    return array[index];
-};
+export const choose = <T>(array: T[]): T =>
+    array[Math.floor(Math.random() * array.length)];
 
-const lowmin = 0.01;
-const lowmax = 0.1;
-const midmin = 0.1;
-const midmax = 0.4;
-const himin = 0.4;
-const himax = 0.9;
-export const softLevel = () => {
-    return rnd(lowmin, lowmax);
-};
-export const midLevel = () => {
-    return rnd(midmin, midmax);
-};
-export const loudLevel = () => {
-    return rnd(himin, himax);
-};
+export const softLevel = (): number => rnd(0.01, 0.1);
+export const midLevel = (): number => rnd(0.1, 0.4);
+export const loudLevel = (): number => rnd(0.4, 0.9);
 export const soft = softLevel;
 export const midlevel = midLevel;
 export const loud = loudLevel;
 
-const shortmin = 0.05;
-const shortmax = 0.2;
-const middurmin = 0.2;
-const middurmax = 2;
-const longmin = 2;
-const longmax = 5;
-export const shortDuration = () => {
-    return rnd(shortmin, shortmax);
-};
-export const midDuration = () => {
-    return rnd(middurmin, middurmax);
-};
-export const longDuration = () => {
-    return rnd(longmin, longmax);
-};
+export const shortDuration = (): number => rnd(0.05, 0.2);
+export const midDuration = (): number => rnd(0.2, 2);
+export const longDuration = (): number => rnd(2, 5);
 export const shortDur = shortDuration;
 export const midDur = midDuration;
 export const longDur = longDuration;
 
-const immediatemin = 0.01;
-const immediatemax = 0.5;
-const soonmin = 0.5;
-const soonmax = 4;
-const latermin = 4;
-const latermax = 8;
+export const now = (): number => rnd(0.01, 0.5);
+export const soon = (): number => rnd(0.5, 4);
+export const later = (): number => rnd(4, 8);
 
-export const now = () => {
-    return rnd(immediatemin, immediatemax);
-};
-export const soon = () => {
-    return rnd(soonmin, soonmax);
-};
-export const later = () => {
-    return rnd(latermin, latermax);
-};
-
-const lowpmin = 12.0;
-const lowpmax = 48.0;
-const midpmin = 48.0;
-const midpmax = 72.0;
-const hipmin = 72.0;
-const hipmax = 96.0;
-
-export function lowPitch() {
-    return rnd(lowpmin, lowpmax);
+export function lowPitch(): number {
+    return rnd(12, 48);
 }
-export function midPitch() {
-    return rnd(midpmin, midpmax);
+export function midPitch(): number {
+    return rnd(48, 72);
 }
-export function hiPitch() {
-    return rnd(hipmin, hipmax);
+export function hiPitch(): number {
+    return rnd(72, 96);
 }
 export const highPitch = hiPitch;
 
-//percussion instruments by Hornbostel-Sachs classification
-export const membranophoneList = [
+export const membranophoneList: number[] = [
     35, 36, 40, 41, 43, 45, 47, 48, 50, 63, 64, 65, 66,
 ];
-export const idiophoneList = [
+export const idiophoneList: number[] = [
     29, 34, 37, 39, 42, 44, 46, 49, 51, 52, 53, 54, 55, 57, 58, 59, 67, 68, 71,
     72, 81,
 ];
-export function rndMembranophone() {
-    return choose(membranophoneList);
-}
-export function rndIdiophone() {
-    return choose(idiophoneList);
-}
-export const membranophone = rndMembranophone;
-export const idiophone = rndIdiophone;
+export const membranophone = (): number => choose(membranophoneList);
+export const idiophone = (): number => choose(idiophoneList);
+export const rndMembranophone = membranophone;
+export const rndIdiophone = idiophone;
 
-export function onSomething() {
+export function onSomething(): Instrument {
     return new Instrument(rnd(0, 127));
 }
 
 // instrument collection
 export const grandPiano = new Instrument(0);
 export const piano = grandPiano;
-let defInstr = piano;
+let defInstr: Instrument = piano;
 export const brightPiano = new Instrument(1);
 export const electricGrand = new Instrument(2);
 export const honkyPiano = new Instrument(3);
@@ -717,10 +804,9 @@ export const tubularBells = new Instrument(14);
 export const dulcimer = new Instrument(15);
 export const tinkleBell = new Instrument(112);
 
-export function onStruck() {
-    let num = rnd(0, 16);
-    if (num > 15) num = 112;
-    return new Instrument(num);
+export function onStruck(): Instrument {
+    const num = rnd(0, 16);
+    return new Instrument(num > 15 ? 112 : num);
 }
 
 export const drawbarOrgan = new Instrument(16);
@@ -733,7 +819,7 @@ export const accordion = new Instrument(21);
 export const harmonic = new Instrument(22);
 export const tangoAccordion = new Instrument(23);
 
-export function onSus() {
+export function onSus(): Instrument {
     return new Instrument(rnd(16, 23));
 }
 
@@ -755,7 +841,7 @@ export const pizzicatoStrings = new Instrument(45);
 export const orchestralHarp = new Instrument(46);
 export const harp = orchestralHarp;
 
-export function onPluck() {
+export function onPluck(): Instrument {
     let num = rnd(24, 38);
     if (num > 31 && num < 34) num += 13;
     if (num > 33) num += 71;
@@ -772,7 +858,7 @@ export const slapBass2 = new Instrument(37);
 export const synthBass1 = new Instrument(38);
 export const synthBass2 = new Instrument(39);
 
-export function onBass() {
+export function onBass(): Instrument {
     return new Instrument(rnd(32, 39));
 }
 
@@ -783,10 +869,9 @@ export const contrabass = new Instrument(43);
 export const tremoloStrings = new Instrument(44);
 export const fiddle = new Instrument(111);
 
-export function onBowed() {
-    let num = rnd(40, 45);
-    if (num > 44) num = 111;
-    return new Instrument(num);
+export function onBowed(): Instrument {
+    const num = rnd(40, 45);
+    return new Instrument(num > 44 ? 111 : num);
 }
 
 export const stringEnsemble1 = new Instrument(48);
@@ -795,7 +880,7 @@ export const stringEnsemble2 = new Instrument(49);
 export const synthStrings1 = new Instrument(50);
 export const synthStrings2 = new Instrument(51);
 
-export function onEnsemble() {
+export function onEnsemble(): Instrument {
     return new Instrument(rnd(48, 51));
 }
 
@@ -803,7 +888,7 @@ export const choirAahs = new Instrument(52);
 export const voiceOohs = new Instrument(53);
 export const synthVoice = new Instrument(54);
 
-export function onVoice() {
+export function onVoice(): Instrument {
     return new Instrument(rnd(52, 54));
 }
 
@@ -820,7 +905,7 @@ export const brass = brassSection;
 export const synthBrass1 = new Instrument(62);
 export const synthBrass2 = new Instrument(63);
 
-export function onBlow() {
+export function onBlow(): Instrument {
     return new Instrument(rnd(56, 63));
 }
 
@@ -842,10 +927,9 @@ export const whistle = new Instrument(78);
 export const ocarina = new Instrument(79);
 export const bagPipe = new Instrument(110);
 
-export function onWind() {
-    let num = rnd(64, 79);
-    if (num > 79) num = 110;
-    return new Instrument(num);
+export function onWind(): Instrument {
+    const num = rnd(64, 79);
+    return new Instrument(num > 79 ? 110 : num);
 }
 
 export const lead1 = new Instrument(80);
@@ -857,7 +941,7 @@ export const lead6 = new Instrument(85);
 export const lead7 = new Instrument(86);
 export const lead8 = new Instrument(87);
 
-export function onLead() {
+export function onLead(): Instrument {
     return new Instrument(rnd(80, 87));
 }
 
@@ -871,7 +955,7 @@ export const pad6 = new Instrument(93);
 export const pad7 = new Instrument(94);
 export const pad8 = new Instrument(96);
 
-export function onSynth() {
+export function onSynth(): Instrument {
     return new Instrument(rnd(88, 96));
 }
 
@@ -884,7 +968,7 @@ export const fx6 = new Instrument(102);
 export const fx7 = new Instrument(103);
 export const fx8 = new Instrument(104);
 
-export function onFx() {
+export function onFx(): Instrument {
     return new Instrument(rnd(97, 104));
 }
 
@@ -905,10 +989,9 @@ export const applause = new Instrument(126);
 export const gunshot = new Instrument(127);
 export const timpani = new Instrument(47);
 
-export function onPerc() {
-    let num = rnd(113, 128);
-    if (num > 127) num = 47;
-    return new Instrument(num);
+export function onPerc(): Instrument {
+    const num = rnd(113, 128);
+    return new Instrument(num > 127 ? 47 : num);
 }
 
 export const drums1 = new Instrument(2, true, 40);
@@ -919,16 +1002,19 @@ export const drums4 = new Instrument(5, true, 40);
 export const drums5 = new Instrument(6, true, 40);
 export const drums6 = new Instrument(7, true, 40);
 
-export function onDrums() {
-    return (new Instrument(rnd(2, 7)), true, rnd(35, 57));
+export function onDrums(): Instrument {
+    return new Instrument(rnd(2, 7), true, rnd(35, 57));
 }
 
-export const silently = (ms) => new Promise((r) => setTimeout(r, ms));
+export const silently = (ms: number): Promise<void> =>
+    new Promise((r) => setTimeout(r, ms));
 
-// Interface simples em Português
-
-// funções
-Instrument.prototype.toque = Instrument.prototype.play;
+// Interface em Português — Portuguese alias for play()
+(
+    Instrument.prototype as Instrument & {
+        toque: typeof Instrument.prototype.play;
+    }
+).toque = Instrument.prototype.play;
 export const toque = play;
 export const pare = stop;
 export const instrumento = instrument;
@@ -947,51 +1033,35 @@ export const naVoz = onVoice;
 export const quieto = silently;
 export const escolha = choose;
 
-// geradores
 export const fraco = softLevel;
 export const mezzo = midLevel;
 export const forte = loudLevel;
-
 export const curta = shortDuration;
 export const média = midDuration;
 export const longa = longDuration;
-
 export const agora = now;
 export const logo = soon;
 export const depois = later;
-
 export const grave = lowPitch;
 export const médio = midPitch;
 export const agudo = highPitch;
 
-// instrumentos
-class Instrumento extends Instrument {
-    constructor(pgm, isDrums = false, what = 60, insno = 10) {
-        super(pgm.number, isDrums, what, insno);
-    }
-    toque(...evtList) {
-        super.play(...evtList);
-    }
-}
-
 export const pianoDeCauda = grandPiano;
 export const pianoBrilhante = brightPiano;
 export const deCaudaElétrico = electricGrand;
-export const pianoRachado = honkyPiano; //honky?
+export const pianoRachado = honkyPiano;
 export const pianoElétrico = electricPiano;
 export const pianoElétrico2 = electricPiano2;
 export const cravo = harpsichord;
 export const clavinete = clavinet;
 export const cravoElétrico = clavinet;
-
 export const caixaDeMúsica = musicBox;
 export const vibrafone = vibraphone;
 export const xilofone = xylophone;
-export const carrilhão = tubularBells; //sinos tubulares?
+export const carrilhão = tubularBells;
 export const sininho = tinkleBell;
 export const sino = tinkleBell;
-
-export const órgãoElétrico = drawbarOrgan; //hammond?
+export const órgãoElétrico = drawbarOrgan;
 export const órgãoPercussivo = percussiveOrgan;
 export const órgãoDeRock = rockOrgan;
 export const órgão = rockOrgan;
@@ -1000,7 +1070,6 @@ export const órgãoDePalhetas = reedOrgan;
 export const acordeão = accordion;
 export const gaita = harmonic;
 export const acordeãoDeTango = tangoAccordion;
-
 export const violão = nylonAcousticGuitar;
 export const vilãoDeNáilon = nylonAcousticGuitar;
 export const violãoDeAço = steelAcousticGuitar;
@@ -1014,7 +1083,6 @@ export const samisém = shamisen;
 export const cordasPizzicato = pizzicatoStrings;
 export const harpaOrquestral = orchestralHarp;
 export const harpa = orchestralHarp;
-
 export const baixoAcústico = acousticBass;
 export const baixoElétrico = fingerElectricBass;
 export const baixoElétricoPalhetado = pickElectricBass;
@@ -1024,25 +1092,20 @@ export const baixoSlap1 = slapBass1;
 export const baixoSlap2 = slapBass2;
 export const baixoSintetizado1 = synthBass1;
 export const baixoSintetizado2 = synthBass2;
-
 export const violino = violin;
 export const violoncelo = cello;
 export const celo = violoncelo;
 export const contrabaixo = contrabass;
 export const cordasTremolo = tremoloStrings;
-
 export const cordas = stringEnsemble1;
 export const cordas2 = stringEnsemble2;
 export const cordasSintetizadas1 = synthStrings1;
 export const cordasSintetizadas2 = synthStrings2;
-
 export const coralAahs = choirAahs;
 export const coralOohs = voiceOohs;
 export const vozSintetizada = synthVoice;
-
 export const golpeOrquestral = orchestralHit;
 export const golpe = orchestralHit;
-
 export const trompete = trumpet;
 export const trompeteAbafado = mutedTrumpet;
 export const trompeteComSurdina = mutedTrumpet;
@@ -1052,7 +1115,6 @@ export const seçãoDeMetais = brassSection;
 export const metais = seçãoDeMetais;
 export const metalSintetizado1 = synthBrass1;
 export const metalSintetizado2 = synthBrass2;
-
 export const saxSoprando = sopranoSax;
 export const saxAlto = altoSax;
 export const saxTenor = tenorSax;
@@ -1072,7 +1134,6 @@ export const garrafa = garrafaSoprada;
 export const assobio = whistle;
 export const assovio = assobio;
 export const gaitaDeFole = bagPipe;
-
 export const efeito1 = fx1;
 export const efeito2 = fx2;
 export const efeito3 = fx3;
@@ -1081,7 +1142,6 @@ export const efeito5 = fx5;
 export const efeito6 = fx6;
 export const efeito7 = fx7;
 export const efeito8 = fx8;
-
 export const agogô = agogo;
 export const tamborDeAço = steelDrums;
 export const blocoDeMadeira = woodblock;
@@ -1100,7 +1160,6 @@ export const helicóptero = helicopter;
 export const aplausos = applause;
 export const tiro = gunshot;
 export const tímpano = timpani;
-
 export const bateria1 = drums1;
 export const bateria = drums1;
 export const bateria2 = drums2;
@@ -1108,6 +1167,7 @@ export const bateria3 = drums3;
 export const bateria4 = drums4;
 export const bateria5 = drums5;
 export const bateria6 = drums6;
-
 export const membranofone = membranophone;
 export const idiofone = idiophone;
+
+export * from "./litePlay.constants";
