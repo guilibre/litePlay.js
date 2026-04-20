@@ -71,6 +71,7 @@ const stopLP = async (event) => {
 
 // import constants for autocompletion
 import * as litePlayLang from "../litePlay.js";
+const { getCsoundNode } = litePlayLang;
 const lpKeys = Object.keys(litePlayLang);
 
 function litePlayCompletions(context) {
@@ -195,7 +196,7 @@ async function startRecording() {
             encoderRegistered = true;
         }
 
-        connectedCsoundNode = await window.csound.getNode();
+        connectedCsoundNode = await getCsoundNode();
         destNode = window.audio_context.createMediaStreamDestination();
         connectedCsoundNode.connect(destNode);
 

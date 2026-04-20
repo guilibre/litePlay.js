@@ -3,6 +3,20 @@ const csoundjs =
     "https://cdn.jsdelivr.net/npm/@csound/browser@6.18.5/dist/csound.js";
 // csound is the Csound engine object (null as we start)
 export let csound = null;
+
+const csoundProxy = new Proxy(
+    {},
+    {
+        get(_, prop) {
+            if (csound == null)
+                throw new Error(
+                    "Csound engine not started. Call startEngine() first."
+                );
+            const val = csound[prop];
+            return typeof val === "function" ? val.bind(csound) : val;
+        },
+    }
+);
 // audio context
 export let audio_context = null;
 // source URL for assets
@@ -13,26 +27,22 @@ const sfont = "./gm.sf2";
 
 // this is the JS function to start Csound
 export async function startEngine() {
-    // if the Csound object is not initialised
     if (csound == null) {
-        // import the Csound method from csound.js
-        const { Csound } = await import(csoundjs);
-        // create a Csound engine object
-        csound = await Csound();
-        // get audio context
-        audio_context = await csound.getAudioContext();
-        // set realtime audio (dac) output
-        await csound.setOption("-odac");
-        // set realtime MIDI input
-        await csound.setOption("-M0");
-        // copy the sfont file to the Csound local filesystem
-        await copyUrlToLocal(srcurl + sfont, sfont);
-        // copy the CSD file to the Csound local filesystem
-        await copyUrlToLocal(srcurl + csd, csd);
-        // compile csound code
-        await csound.compileCsd(csd);
-        // start the engine
-        await csound.start();
+        try {
+            const { Csound } = await import(csoundjs);
+            csound = await Csound();
+            audio_context = await csound.getAudioContext();
+            await csound.setOption("-odac");
+            await csound.setOption("-M0");
+            await copyUrlToLocal(srcurl + sfont, sfont);
+            await copyUrlToLocal(srcurl + csd, csd);
+            const result = await csound.compileCsd(csd);
+            if (result !== 0) throw new Error("Csound CSD compilation failed.");
+            await csound.start();
+        } catch (err) {
+            csound = null;
+            throw err;
+        }
     }
 }
 
@@ -43,17 +53,21 @@ async function copyUrlToLocal(src, dest) {
     // get the file data as an array
     const dat = await srcfile.arrayBuffer();
     // write the data as a new file in the filesystem
-    await csound.fs.writeFile(dest, new Uint8Array(dat));
+    await csoundProxy.fs.writeFile(dest, new Uint8Array(dat));
 }
 
 // generic midi message
 export function midi(stat, b1, b2) {
-    csound.midiMessage(stat, b1, b2);
+    if (stat < 0 || stat > 255 || b1 < 0 || b1 > 127 || b2 < 0 || b2 > 127)
+        throw new RangeError(
+            "MIDI values must be in range 0-127 (0-255 for status)."
+        );
+    csoundProxy.midiMessage(stat, b1, b2);
 }
 
 // midi program message
 export function midiProgram(n, chn = 1) {
-    if (chn >= 1 && chn <= 16) csound.midiMessage(chn + 191, n, 0);
+    if (chn >= 1 && chn <= 16) csoundProxy.midiMessage(chn + 191, n, 0);
 }
 
 // litePlay.js global parameters
@@ -90,8 +104,8 @@ export class Instrument {
         let instr =
             this.instr + what / 1000000 + this.chn / globalObj.maxChannel;
         if (this.isDrums) {
-            if (prog == 7) csound.tableSet(26, this.chn, 2);
-            else csound.tableSet(26, this.chn, 0.5);
+            if (prog == 7) csoundProxy.tableSet(26, this.chn, 2);
+            else csoundProxy.tableSet(26, this.chn, 0.5);
             if (what == 29 || what == 30) instr = 10.97;
             else if (what == 42 || what == 44 || what == 46 || what == 49)
                 instr = 10.91;
@@ -164,7 +178,7 @@ export class Instrument {
                 mess += this.score(what, amp, when, dur);
             }
         }
-        csound.inputMessage(mess);
+        csoundProxy.inputMessage(mess);
     }
 
     stop(...evtLst) {
@@ -186,20 +200,20 @@ export class Instrument {
                 mess += this.score(what, 0, when, 0);
             }
         }
-        csound.inputMessage(mess);
+        csoundProxy.inputMessage(mess);
     }
 
     bend(amount) {
         const val = 2 ** (amount / 12);
-        csound.tableSet(14, this.chn, val);
+        csoundProxy.tableSet(14, this.chn, val);
     }
 
     reverb(amount) {
-        csound.tableSet(8, this.chn, amount);
+        csoundProxy.tableSet(8, this.chn, amount);
     }
 
     cutoff(amount) {
-        csound.tableSet(
+        csoundProxy.tableSet(
             17,
             this.chn,
             amount < 1 ? (amount > 0 ? amount : 0) : 1
@@ -207,7 +221,7 @@ export class Instrument {
     }
 
     resonance(amount) {
-        csound.tableSet(
+        csoundProxy.tableSet(
             18,
             this.chn,
             amount < 1 ? (amount > 0 ? amount : 0) : 1
@@ -215,7 +229,7 @@ export class Instrument {
     }
 
     pan(amount) {
-        csound.tableSet(
+        csoundProxy.tableSet(
             3,
             this.chn,
             (amount < 1 ? (amount > 0 ? amount : 0) : 1) * 127
@@ -223,7 +237,7 @@ export class Instrument {
     }
 
     volume(amount) {
-        csound.tableSet(
+        csoundProxy.tableSet(
             2,
             this.chn,
             (amount < 1 ? (amount > 0 ? amount : 0) : 1) * 127
@@ -231,18 +245,18 @@ export class Instrument {
     }
 
     filterEnvelope(amount, att, dec, sus, rel) {
-        csound.tableSet(19, this.chn, att);
-        csound.tableSet(20, this.chn, dec);
-        csound.tableSet(21, this.chn, sus);
-        csound.tableSet(22, this.chn, rel);
-        csound.tableSet(27, this.chn, amount);
+        csoundProxy.tableSet(19, this.chn, att);
+        csoundProxy.tableSet(20, this.chn, dec);
+        csoundProxy.tableSet(21, this.chn, sus);
+        csoundProxy.tableSet(22, this.chn, rel);
+        csoundProxy.tableSet(27, this.chn, amount);
     }
 
     ampEnvelope(att, dec, sus, rel) {
-        csound.tableSet(23, this.chn, att);
-        csound.tableSet(24, this.chn, dec);
-        csound.tableSet(25, this.chn, sus);
-        csound.tableSet(26, this.chn, rel);
+        csoundProxy.tableSet(23, this.chn, att);
+        csoundProxy.tableSet(24, this.chn, dec);
+        csoundProxy.tableSet(25, this.chn, sus);
+        csoundProxy.tableSet(26, this.chn, rel);
     }
 }
 
@@ -255,15 +269,15 @@ export const sample = {
         this.fo = fo;
         this.bpm = bpm;
         copyUrlToLocal(what, "localfile").then(() => {
-            csound.inputMessage(
+            csoundProxy.inputMessage(
                 "i2 0 0" + ' "localfile" ' + this.fo + " " + this.number
             );
-            if (bpm > 0) csound.tableSet(15, this.number, getBpm() / bpm);
+            if (bpm > 0) csoundProxy.tableSet(15, this.number, getBpm() / bpm);
         });
     },
     loop: function (start, end) {
-        csound.tableSet(11, this.number, start);
-        csound.tableSet(12, this.number, end);
+        csoundProxy.tableSet(11, this.number, start);
+        csoundProxy.tableSet(12, this.number, end);
     },
     create: function (what = null, fo = 60, bpm = 0) {
         let e = Object.create(sample);
@@ -288,11 +302,11 @@ export class Sampler extends Instrument {
     }
     play(...evtLst) {
         if (this.sample.bpm > 0)
-            csound.tableSet(15, this.number, getBpm() / this.sample.bpm);
+            csoundProxy.tableSet(15, this.number, getBpm() / this.sample.bpm);
         super.play(...evtLst);
     }
     speed(val) {
-        csound.tableSet(16, this.chn, val);
+        csoundProxy.tableSet(16, this.chn, val);
     }
 }
 
@@ -341,20 +355,25 @@ export const sequencer = {
     },
     click: function (ref) {
         if (!this.clickOn) return;
-        let t = secs(1);
-        let delta = audioClock() - (t + ref);
-        if (delta >= 0) {
-            this.time = t + audioClock() - delta;
-            this.seqList.forEach((v, i, a) => {
-                v.play(beats(t - delta));
-            });
-            const cbs = [...this.callbacks];
-            this.callbacks = [];
-            cbs.forEach((v, i, a) => {
-                v(beats(t - delta));
-            });
-            setTimeout(this.click.bind(this, audioClock() - delta));
-        } else setTimeout(this.click.bind(this, ref));
+        try {
+            let t = secs(1);
+            let delta = audioClock() - (t + ref);
+            if (delta >= 0) {
+                this.time = t + audioClock() - delta;
+                this.seqList.forEach((v) => {
+                    v.play(beats(t - delta));
+                });
+                const cbs = [...this.callbacks];
+                this.callbacks = [];
+                cbs.forEach((v) => {
+                    v(beats(t - delta));
+                });
+                setTimeout(this.click.bind(this, audioClock() - delta));
+            } else setTimeout(this.click.bind(this, ref));
+        } catch (err) {
+            console.error("Sequencer error:", err);
+            this.stop();
+        }
     },
     sequence: function (i, w, a, b, j) {
         return {
@@ -409,7 +428,8 @@ export const sequencer = {
                                 theInstr = isInstr(theInstr)
                                     ? theInstr
                                     : this.instr;
-                                dur = dur > 0 ? dur : theInstr.isDrums ? 0 : t;
+                                dur =
+                                    dur > 0 ? dur : theInstr.isDrums ? 0 : bbs;
                             }
                             if (sched >= 0 && pp >= 0 && this.on)
                                 theInstr.play([pp, amp, sched + i * bbs, dur]);
@@ -574,7 +594,6 @@ export const eventList = {
                 instr = defInstr;
                 amp = instr.howLoud;
                 dur = instr.howLong;
-                instr = defInstr;
                 etime = time;
             }
             let totdur = etime + dur;
@@ -585,7 +604,7 @@ export const eventList = {
         return {
             score: mess,
             play: function () {
-                csound.inputMessage(this.score);
+                csoundProxy.inputMessage(this.score);
             },
         };
     },
@@ -639,8 +658,12 @@ export function stop() {
 
 export async function reset() {
     if (csound) {
-        await csound.inputMessage("i 200 0 0.1");
+        await csoundProxy.inputMessage("i 200 0 0.1");
     }
+}
+
+export async function getCsoundNode() {
+    return csoundProxy.getNode();
 }
 
 export const rnd = (min, max) => Math.random() * (max - min) + min;
