@@ -1,0 +1,69 @@
+<!doctype html>
+<html>
+    <head>
+        <meta
+            name="viewport"
+            content="width=device-width, initial-scale=1, user-scalable=no"
+        />
+        <meta name="Description" content="litePlay" />
+        <meta charset="utf-8" />
+        <title>litePlay</title>
+
+      <script type="module" crossorigin src="/assets/main-WncWde3c.js"></script>
+      <link rel="modulepreload" crossorigin href="/assets/litePlay-QAsjdudr.js">
+      <link rel="stylesheet" crossorigin href="/assets/main-ClsGzf_u.css">
+    </head>
+    <body>
+        <div style="display: block; text-align: center; width: 100%">
+            <h1>litePlay</h1>
+            <div class="text">
+                <p>
+                    <br />Welcome to litePlay! <br />Write your code bellow and
+                    hit <b>RUN</b> or type <b>Ctrl+Enter</b>. <br />Use the
+                    <b>STOP</b> button or type <b>Ctrl+.</b> to pause
+                    everything. <br />You can record audio with the
+                    <b>REC</b> button or by typing <b>Ctrl+r</b>. <br />New to
+                    litePlay? Read the
+                    <b
+                        ><a
+                            href="https://g-ubimus.github.io/litePlay.docs/"
+                            target="_blank"
+                            >docs</a
+                        ></b
+                    >.
+                </p>
+            </div>
+
+            <div style="display: block; text-align: left; width: 100%">
+                <div style="display: inline">
+                    <button class="button" id="run-btn">
+                        &#9654; <b>RUN</b>
+                    </button>
+                    <button class="button" id="stop-btn">
+                        &#9724; <b>STOP</b>
+                    </button>
+                    <button class="button" id="save-btn">
+                        &#9660; <b>SAVE CODE</b>
+                    </button>
+                    <button class="button" id="rec-btn">
+                        &#9673; <b>REC</b>
+                    </button>
+                    <button class="button" id="stopRec-btn">
+                        &#9689; <b>STOP REC</b>
+                    </button>
+                </div>
+            </div>
+            <div id="editor-container" class="cm-container"></div>
+            <div class="editor-row">
+                <br />
+                <textarea
+                    id="console-output"
+                    autocomplete="off"
+                    readonly
+                    class="console"
+                    placeholder="Click anywhere to start litePlay."
+                ></textarea>
+            </div>
+        </div>
+    </body>
+</html>
