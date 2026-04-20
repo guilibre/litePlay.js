@@ -15,34 +15,43 @@ import * as constants from "../litePlay.constants.ts";
 
 const { getCsoundNode, reset } = litePlayLang;
 
-// override console.log to print in the on-screen textarea
 const consoleOutput = document.getElementById(
     "console-output"
 ) as HTMLTextAreaElement | null;
+
+const MAX_CONSOLE_LINES = 500;
+function appendToConsole(text: string): void {
+    if (!consoleOutput) return;
+    consoleOutput.value += text + "\n";
+    const lines = consoleOutput.value.split("\n");
+    if (lines.length > MAX_CONSOLE_LINES)
+        consoleOutput.value = lines.slice(-MAX_CONSOLE_LINES).join("\n");
+    consoleOutput.scrollTop = consoleOutput.scrollHeight;
+}
+
 const originalLog = console.log;
 console.log = function (...args: unknown[]) {
     originalLog.apply(console, args);
-    const message = args
-        .map((arg) =>
-            typeof arg === "object" ? JSON.stringify(arg) : String(arg)
-        )
-        .join(" ");
-    if (consoleOutput) {
-        consoleOutput.value += message + "\n";
-        consoleOutput.scrollTop = consoleOutput.scrollHeight;
-    }
+    appendToConsole(
+        args
+            .map((arg) =>
+                typeof arg === "object" ? JSON.stringify(arg) : String(arg)
+            )
+            .join(" ")
+    );
 };
 
 const originalError = console.error;
 console.error = function (...args: unknown[]) {
     originalError.apply(console, args);
-    const message = args
-        .map((arg) => (arg instanceof Error ? arg.message : String(arg)))
-        .join(" ");
-    if (consoleOutput) {
-        consoleOutput.value += "ERROR: " + message + "\n";
-        consoleOutput.scrollTop = consoleOutput.scrollHeight;
-    }
+    appendToConsole(
+        "ERROR: " +
+            args
+                .map((arg) =>
+                    arg instanceof Error ? arg.message : String(arg)
+                )
+                .join(" ")
+    );
 };
 
 const getDatetimeString = (): string => {
@@ -101,13 +110,20 @@ function litePlayCompletions(
     };
 }
 
+const LS_KEY = "liteplay_code";
+
 const startState = EditorState.create({
+    doc: localStorage.getItem(LS_KEY) ?? "",
     extensions: [
         basicSetup,
         oneDark,
         javascript(),
         javascriptLanguage.data.of({ autocomplete: litePlayCompletions }),
         autocompletion(),
+        EditorView.updateListener.of((update) => {
+            if (update.docChanged)
+                localStorage.setItem(LS_KEY, update.state.doc.toString());
+        }),
         Prec.highest(
             keymap.of([
                 { key: "Mod-Enter", run: runLP },
@@ -197,7 +213,7 @@ async function startRecording(): Promise<void> {
         destNode = lp.audio_context.createMediaStreamDestination();
         connectedCsoundNode.connect(destNode);
 
-        const resampleContext = new AudioContext({ sampleRate: 41000 });
+        const resampleContext = new AudioContext({ sampleRate: 44100 });
         const sourceNode = resampleContext.createMediaStreamSource(
             destNode.stream
         );
