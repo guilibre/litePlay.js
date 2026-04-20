@@ -1,10 +1,8 @@
-A Start-Up Tutorial
-========
+# A Start-Up Tutorial
 
 litePlay.js is a JavaScript (JS) module for music lite coding. It can be used in any web applications, but typically we anticipate it to be helpful for interactive music programming. This may be oriented to performance or composition (or both). This tutorial is focused on such use cases.
 
-JS Coding Environments
---------
+## JS Coding Environments
 
 There are various online coding environments available for JS development with different characteristics and support for various kinds of uses. For the present tutorial, we are looking at the following requirements:
 
@@ -21,7 +19,7 @@ Not all environments fulfill these. The following three do:
 
 - [litePlay online editor](https://vlazzarini.github.io/litePlay.js/): a simple editor designed to test experimental features with REPL. It supports JS Code inside the textarea, and litePlay's functions can be called without the prefix. It can saves code by downloading it to your computer. Uploading media files is currently not supported.
 
-The code in this tutorial can be run in any of the three platforms. Whenever the REPL is mentioned, if not present (e.g. in Playcode), the code can be evaluated directly from the script in the *live* mode.
+The code in this tutorial can be run in any of the three platforms. Whenever the REPL is mentioned, if not present (e.g. in Playcode), the code can be evaluated directly from the script in the _live_ mode.
 
 Note that litePlay.js does not have any means of sound recording itself,
 it is designed strictly as a realtime, interactive, music coding
@@ -31,8 +29,7 @@ needs to be used. At the time of writing the Google Chrome extension
 has been tested and can be used for this. Other means may also
 available depending on the operating system (e.g. BlackHole on MacOS).
 
-Loading the LitePlay.js module
--------
+## Loading the LitePlay.js module
 
 The simplest way to load the litePlay.js module is to add the following script tag to the main HTML page header (generally called index.html).
 
@@ -65,9 +62,7 @@ anywhere by prefixing its functions etc with `lp.`.
 An example startup JS script for the online P5.js editor is available
 at this [URL](https://editor.p5js.org/vlazzarini/sketches/-pzBQCbL9S).
 
-
-The `play()` action
----------
+## The `play()` action
 
 At the core of litePlay.js we have `play()`. This can be simply run as
 
@@ -100,13 +95,13 @@ sound is played immediately and lasts indefinitely (although some
 may decay in intensity over time).
 
 Accidentals are represented by lowercase `s` for _sharp_ and `b` for flat _notes_:
+
 ```
 lp.play(Eb4);
 lp.play(Fs4);
 ```
 
-Events
----
+## Events
 
 In litePlay.js we can think of the resulting action of `play()` in this form is a musical _event_. We can define it with five attributes:
 
@@ -118,7 +113,7 @@ In litePlay.js we can think of the resulting action of `play()` in this form is 
 
 - _howLong_: how long the sound is to last for, in seconds.
 
-- _onSomething_: the thing that will be making the sound, the instrument, such as `lp.organ`, `lp.violin` etc. There are several of these to choose from. Depending on the type of instrument, _what_ can be played may vary. For example, in the case of `lp.drums`, we do not have pitch, but different percussion sounds like `snare`, `kick`,  etc.
+- _onSomething_: the thing that will be making the sound, the instrument, such as `lp.organ`, `lp.violin` etc. There are several of these to choose from. Depending on the type of instrument, _what_ can be played may vary. For example, in the case of `lp.drums`, we do not have pitch, but different percussion sounds like `snare`, `kick`, etc.
 
 Event attributes (or parameters) are optional, as we have seen. If we do pass them, defaults are used. It is possible to pass only a few parameters, for example just _what_; _what_ and _howLoud_; _what_, _howLoud_, and _when_; as well as _what_, _howLoud_,_when_, and _howLong_.
 
@@ -141,12 +136,11 @@ as
 lp.play([C4, 0.1, 0, 3],[E4, 0.2, 0.5, 0.5], [G4, 0.4, 2, 0.1])
 ```
 
-Event Lists
------------
+## Event Lists
 
 The last example of the previous section demonstrated that we can work
 with lists of events, instead of only sending individual events to
-`play()`.  There is a particular aspect of this that we should note,
+`play()`. There is a particular aspect of this that we should note,
 the _when_ attributes of each event will be interpreted in a certain
 way.
 
@@ -156,10 +150,9 @@ way.
 lp.play(C3, C4, C5);
 ```
 
-In this case, the events will be separated by the default 
+In this case, the events will be separated by the default
 _howLong_ for the _onSomething_ being played (set to 1 sec). So we
 hear the sounds in sequence.
-
 
 - A list of incomplete events
 
@@ -170,7 +163,6 @@ lp.play([C3], [C4], [C5]);
 In this case, the default for _when_ is 0, immediately, for
 all events in the list. We hear the sounds starting at the same
 time, mixed up.
-
 
 - A list of events with _when_ attributes explicitly defined
 
@@ -185,7 +177,7 @@ that. We can decide when these should come in with an
 exact time.
 
 This brings us the concept of an _eventList_, which is
-expressed in litePlay.js by JS object  that can be manipulated.
+expressed in litePlay.js by JS object that can be manipulated.
 For example, we can create it
 
 ```
@@ -224,14 +216,14 @@ in the object. Beyond that, we may, amongst other things,
 take any number of events (as `create()` did).
 
 - `eventList.remove(index)` remove an event with a given `index`
-from the list, or the last event (if no `index` is given).
+  from the list, or the last event (if no `index` is given).
 
 - `eventList.insert(pos, event, ...)` insert one or more events into
-the object, after position `pos`.
+  the object, after position `pos`.
 
 ```
-evts.add(event, [C4,0.9,3]);    
-evts.remove(0);    
+evts.add(event, [C4,0.9,3]);
+evts.remove(0);
 evts.insert(1, [D4, 0.8, 0.5]);
 ```
 
@@ -250,7 +242,7 @@ times after the end of the first `play()` action,
 
 ```
   let evt = lp.eventList.create([C4, 0.1, 0, 1],
-                                [E4, 0.2, 1, 1], 
+                                [E4, 0.2, 1, 1],
                                 [G4, 0.4, 2, 1]);
   end = evt.play();
   evt.add([C1, 0.1, 3, 3], [C1, 0.1, 0, 4]);
@@ -271,8 +263,7 @@ With events and eventLists we can construct compositions and
 performances with precise relative timing between events, which is
 something desirable in musical activities.
 
-Instruments
------
+## Instruments
 
 In litePlay.js, sound generation is managed by instrument objects. In
 general, we can access these by using one of the names defined in the
@@ -286,7 +277,7 @@ Instrument(number)`. There are 128 different instruments plus six
 special drum kits that can be accessed via their individual numbers.
 
 - _Struck_: pitched sounds create by striking something like a
-string, bar, etc
+  string, bar, etc
 
 ```
 const grandPiano = new Instrument(0);
@@ -386,6 +377,7 @@ const  choirAahs = new Instrument(52);
 const  voiceOohs = new Instrument(53);
 const  synthVoice = new Instrument(54);
 ```
+
 - _Blow_: pitched sounds created by blowing on a open mouthpiece
   connected to a pipe
 
@@ -402,7 +394,7 @@ const  synthBrass1 = new Instrument(62);
 const  synthBrass2 = new Instrument(63);
 ```
 
--_Wind_: pitched sounds created by blowing on different types of reeds 
+-_Wind_: pitched sounds created by blowing on different types of reeds
 
 ```
 const  sopranoSax = new Instrument(64);
@@ -435,6 +427,7 @@ const  lead6 = new Instrument(85);
 const  lead7 = new Instrument(86);
 const  lead8 = new Instrument(87);
 ```
+
 -_Synth_: generic pitched synthesizer sounds
 
 ```
@@ -448,6 +441,7 @@ const  pad6 = new Instrument(93);
 const  pad7 = new Instrument(94);
 const  pad8 = new Instrument(96);
 ```
+
 - _Fx_: mostly unpitched effects sounds
 
 ```
@@ -483,7 +477,7 @@ const  gunshot = new Instrument(127);
 
 - _Drums_: unpitched drum/percussion kits, with specific sounds that
   can be selected individually. For these, the instrument names are
-  `drums`, `drums1`,`drums2`, `drums3`,  `drums4`, `drums5`, and
+  `drums`, `drums1`,`drums2`, `drums3`, `drums4`, `drums5`, and
   `drums6`. The sounds can be selected via a _what_ attribute, which
   can be one of the following as defined below:
 

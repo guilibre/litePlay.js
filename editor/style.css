@@ -1,100 +1,99 @@
 body {
-	font-size: 18px;	
-	margin-top: 2%;
-	margin-bottom: 5%;
-	font-family: sans-serif;
+    font-size: 18px;
+    margin-top: 2%;
+    margin-bottom: 5%;
+    font-family: sans-serif;
 }
 
-div.text{
-	text-align: left;
-	font-size: 20px;
-	margin-left: 0%;
-  	color: #282c34;
+div.text {
+    text-align: left;
+    font-size: 20px;
+    margin-left: 0%;
+    color: #282c34;
 }
- 
+
 .button {
-	padding: .2% 100px;
-	transition: filter .5s ease;
-	cursor: pointer;
-	margin-top: .1%;
-	border-radius: 0;
+    padding: 0.2% 100px;
+    transition: filter 0.5s ease;
+    cursor: pointer;
+    margin-top: 0.1%;
+    border-radius: 0;
 }
 
 .button:hover {
-	filter: brightness(.8);
+    filter: brightness(0.8);
 }
 
 .editor-row {
-	display: flex;
-	width: 100%;
-	margin: 0 auto;
-	height: 200px;
-	margin-top: .1%;
+    display: flex;
+    width: 100%;
+    margin: 0 auto;
+    height: 200px;
+    margin-top: 0.1%;
 }
 
 .cm-container {
-	height: 100%;
+    height: 100%;
 }
 
 .cm-editor {
-	width: 100%;
-	height: 500px;
-	font-size: 18px; 
-	font-family: monospace; 
-	text-align: left;
-	margin: 0;         /* Removed auto margin so it touches the right side */
+    width: 100%;
+    height: 500px;
+    font-size: 18px;
+    font-family: monospace;
+    text-align: left;
+    margin: 0; /* Removed auto margin so it touches the right side */
 }
 
-.cm-scroller { 
-	overflow: auto; 
+.cm-scroller {
+    overflow: auto;
 }
 
 .console {
-	flex: 5;
-	width: 100%;
-	height: 200px;
-	font-size: 18px; 
-	font-family: monospace;
-	background: #282c34;
-	color: #fff;
-	border: none;
-	resize: none;
-	margin: 0 auto;    /* Centers it to align with the row above */
-	display: block;    /* Required for margin: 0 auto to work on a textarea */
-	box-sizing: border-box;
+    flex: 5;
+    width: 100%;
+    height: 200px;
+    font-size: 18px;
+    font-family: monospace;
+    background: #282c34;
+    color: #fff;
+    border: none;
+    resize: none;
+    margin: 0 auto; /* Centers it to align with the row above */
+    display: block; /* Required for margin: 0 auto to work on a textarea */
+    box-sizing: border-box;
 }
 
 .ready-green {
-    	background-color: #4CAF50;
-    	color: white;
-    	font-weight: bold;
-    	transition: background-color 1s ease;
+    background-color: #4caf50;
+    color: white;
+    font-weight: bold;
+    transition: background-color 1s ease;
 }
 
 .ready-red {
-    	background-color: #A84732;
-    	color: white;
-    	font-weight: bold;
-    	transition: background-color 1s ease;
+    background-color: #a84732;
+    color: white;
+    font-weight: bold;
+    transition: background-color 1s ease;
 }
 
 a:link {
-	color: green;
-	text-decoration: none;
+    color: green;
+    text-decoration: none;
 }
 
 a:visited {
-	color: green;
-  	text-decoration: none;
+    color: green;
+    text-decoration: none;
 }
 
 a:hover {
-	color: green;
-  	text-decoration: underline;
+    color: green;
+    text-decoration: underline;
 }
 
 a:active {
-  	color:red;
-  	text-decoration: underline;
+    color: red;
+    text-decoration: underline;
 }
-
