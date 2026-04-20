@@ -17,6 +17,27 @@ const csoundProxy = new Proxy(
         },
     }
 );
+const resolve = (val) => (typeof val === "function" ? val() : val);
+
+const DRUM_INSTR = {
+    29: 10.97,
+    30: 10.97,
+    42: 10.91,
+    44: 10.91,
+    46: 10.91,
+    49: 10.91,
+    71: 10.92,
+    72: 10.92,
+    73: 10.93,
+    74: 10.93,
+    78: 10.94,
+    79: 10.94,
+    80: 10.95,
+    81: 10.95,
+    86: 10.96,
+    87: 10.96,
+};
+
 // audio context
 export let audio_context = null;
 // source URL for assets
@@ -95,6 +116,10 @@ export class Instrument {
         this.instr = instr;
     }
 
+    _clamp(v, min = 0, max = 1) {
+        return v < min ? min : v > max ? max : v;
+    }
+
     what(snd) {
         this.what_ = snd;
     }
@@ -106,14 +131,7 @@ export class Instrument {
         if (this.isDrums) {
             if (prog == 7) csoundProxy.tableSet(26, this.chn, 2);
             else csoundProxy.tableSet(26, this.chn, 0.5);
-            if (what == 29 || what == 30) instr = 10.97;
-            else if (what == 42 || what == 44 || what == 46 || what == 49)
-                instr = 10.91;
-            else if (what == 71 || what == 72) instr = 10.92;
-            else if (what == 73 || what == 74) instr = 10.93;
-            else if (what == 78 || what == 79) instr = 10.94;
-            else if (what == 80 || what == 81) instr = 10.95;
-            else if (what == 86 || what == 87) instr = 10.96;
+            instr = DRUM_INSTR[what] ?? instr;
             prog = 317 + this.pgm;
         }
 
@@ -158,22 +176,12 @@ export class Instrument {
         } else {
             for (const evt of evtLst) {
                 if (typeof evt === "object" && typeof evt !== "function") {
-                    let what_ = evt[0];
-                    let dur_ = evt.length > 3 ? evt[3] : 1;
-                    let when_ = evt.length > 2 ? evt[2] : 0;
-                    let amp_ = evt.length > 1 ? evt[1] : amp;
-                    if (typeof what_ === "function") what = what_();
-                    else what = what_;
-                    if (typeof dur_ === "function") dur = dur_();
-                    else dur = dur_;
-                    if (typeof when_ === "function") when = when_();
-                    else when = when_;
-                    if (typeof amp_ === "function") amp = amp_();
-                    else amp = amp_;
+                    what = resolve(evt[0]);
+                    dur = resolve(evt.length > 3 ? evt[3] : 1);
+                    when = resolve(evt.length > 2 ? evt[2] : 0);
+                    amp = resolve(evt.length > 1 ? evt[1] : amp);
                 } else {
-                    let what_ = evt;
-                    if (typeof what_ === "function") what = what_();
-                    else what = what_;
+                    what = resolve(evt);
                 }
                 mess += this.score(what, amp, when, dur);
             }
@@ -213,35 +221,19 @@ export class Instrument {
     }
 
     cutoff(amount) {
-        csoundProxy.tableSet(
-            17,
-            this.chn,
-            amount < 1 ? (amount > 0 ? amount : 0) : 1
-        );
+        csoundProxy.tableSet(17, this.chn, this._clamp(amount));
     }
 
     resonance(amount) {
-        csoundProxy.tableSet(
-            18,
-            this.chn,
-            amount < 1 ? (amount > 0 ? amount : 0) : 1
-        );
+        csoundProxy.tableSet(18, this.chn, this._clamp(amount));
     }
 
     pan(amount) {
-        csoundProxy.tableSet(
-            3,
-            this.chn,
-            (amount < 1 ? (amount > 0 ? amount : 0) : 1) * 127
-        );
+        csoundProxy.tableSet(3, this.chn, this._clamp(amount) * 127);
     }
 
     volume(amount) {
-        csoundProxy.tableSet(
-            2,
-            this.chn,
-            (amount < 1 ? (amount > 0 ? amount : 0) : 1) * 127
-        );
+        csoundProxy.tableSet(2, this.chn, this._clamp(amount) * 127);
     }
 
     filterEnvelope(amount, att, dec, sus, rel) {
@@ -396,98 +388,43 @@ export const sequencer = {
                     amp = this.amp;
                     this.n = this.n != what.length - 1 ? this.n + 1 : 0;
                     if (typeof evt !== "object") {
-                        if (typeof evt === "function") pp = evt();
-                        else pp = evt;
+                        pp = resolve(evt);
                         if (sched >= 0 && pp >= 0 && this.on)
                             theInstr.play([pp, amp, sched + i * bbs, dur]);
                     } else {
-                        if (typeof evt[0] !== "object") {
-                            let what_ = evt[0];
-                            if (typeof what_ === "function") pp = what_();
-                            else pp = what_;
-                            if (evt.length > 1) {
-                                let gain = evt[1];
-                                if (typeof gain === "function") amp *= gain();
-                                else amp *= gain;
-                            }
-                            if (evt.length > 2) {
-                                let offs = evt[2];
-                                if (typeof offs === "function") sched += offs();
-                                else sched += offs;
-                            }
-                            if (evt.length > 3) {
-                                let dur_ = evt[3];
-                                if (typeof dur_ === "function") dur = dur_();
-                                else dur = dur_;
-                            }
-                            if (evt.length > 4) {
-                                let instr_ = evt[4];
-                                if (typeof instr_ === "function")
-                                    theInstr = instr_();
-                                else theInstr = instr_;
-                                theInstr = isInstr(theInstr)
-                                    ? theInstr
+                        const applyEl = (el, baseSched) => {
+                            let elAmp = this.amp;
+                            let elInstr = this.instr;
+                            let elDur = elInstr.isDrums ? 0 : bbs;
+                            let elSched = baseSched;
+                            pp = resolve(el[0]);
+                            if (el.length > 1) elAmp *= resolve(el[1]);
+                            if (el.length > 2) elSched += resolve(el[2]);
+                            if (el.length > 3) elDur = resolve(el[3]);
+                            if (el.length > 4) {
+                                elInstr = resolve(el[4]);
+                                elInstr = isInstr(elInstr)
+                                    ? elInstr
                                     : this.instr;
-                                dur =
-                                    dur > 0 ? dur : theInstr.isDrums ? 0 : bbs;
+                                elDur =
+                                    elDur > 0
+                                        ? elDur
+                                        : elInstr.isDrums
+                                          ? 0
+                                          : bbs;
                             }
-                            if (sched >= 0 && pp >= 0 && this.on)
-                                theInstr.play([pp, amp, sched + i * bbs, dur]);
+                            if (elSched >= 0 && pp >= 0 && this.on)
+                                elInstr.play([
+                                    pp,
+                                    elAmp,
+                                    elSched + i * bbs,
+                                    elDur,
+                                ]);
+                        };
+                        if (typeof evt[0] !== "object") {
+                            applyEl(evt, sched);
                         } else {
-                            for (const el of evt) {
-                                amp = this.amp;
-                                theInstr = this.instr;
-                                dur = theInstr.isDrums ? 0 : this.bbs;
-                                let what_ = el[0];
-
-                                if (typeof what_ === "function") pp = what_();
-                                else pp = what_;
-
-                                if (el.length > 1) {
-                                    let gain = el[1];
-                                    if (typeof gain === "function")
-                                        amp *= gain();
-                                    else amp *= gain;
-                                }
-
-                                if (el.length > 2) {
-                                    let offs = el[2];
-                                    if (typeof offs === "function")
-                                        sched += offs();
-                                    else sched += offs;
-                                }
-
-                                if (el.length > 3) {
-                                    let dur_ = el[3];
-                                    if (typeof dur_ === "function")
-                                        dur = dur_();
-                                    else dur = dur_;
-                                }
-
-                                if (el.length > 4) {
-                                    let instr_ = el[4];
-                                    if (typeof instr_ === "function")
-                                        theInstr = instr_();
-                                    else theInstr = instr_;
-                                    theInstr = isInstr(theInstr)
-                                        ? theInstr
-                                        : this.instr;
-                                    dur =
-                                        dur > 0
-                                            ? dur
-                                            : theInstr.isDrums
-                                              ? 0
-                                              : t;
-                                }
-
-                                if (sched >= 0 && pp >= 0 && this.on)
-                                    theInstr.play([
-                                        pp,
-                                        amp,
-                                        sched + i * bbs,
-                                        dur,
-                                    ]);
-                            }
+                            for (const el of evt) applyEl(el, sched);
                         }
                     }
                 }
@@ -568,29 +505,15 @@ export const eventList = {
         this.maxdur = 0;
         for (const evt of evtLst) {
             if (typeof evt === "object" && typeof evt !== "function") {
-                let what_ = evt[0];
-                if (typeof what_ === "function") what = what_();
-                else what = what_;
-                let instr_ = evt.length > 4 ? evt[4] : defInstr;
-                if (typeof instr_ === "function") instr = instr_();
-                else instr = instr_;
+                what = resolve(evt[0]);
+                instr = resolve(evt.length > 4 ? evt[4] : defInstr);
                 instr = isInstr(instr) ? instr : defInstr;
-
-                let dur_ = evt.length > 3 ? evt[3] : instr.howLong;
-                if (typeof dur_ === "function") dur = dur_();
-                else dur = dur_;
-
-                let time_ = evt.length > 2 ? evt[2] : 0;
-                if (typeof time_ === "function") etime = time_();
-                else etime = time_;
-
+                dur = resolve(evt.length > 3 ? evt[3] : instr.howLong);
+                etime = resolve(evt.length > 2 ? evt[2] : 0);
                 time = etime + when;
-                let amp_ = evt.length > 1 ? evt[1] : instr.howLoud;
-                if (typeof amp_ === "function") amp = amp_();
-                else amp = amp_;
+                amp = resolve(evt.length > 1 ? evt[1] : instr.howLoud);
             } else {
-                if (typeof evt === "function") what = evt();
-                else what = evt;
+                what = resolve(evt);
                 instr = defInstr;
                 amp = instr.howLoud;
                 dur = instr.howLong;

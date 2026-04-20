@@ -45,6 +45,11 @@ console.error = function (...args) {
     }
 };
 
+const getDatetimeString = () => {
+    const d = new Date();
+    return `${d.getFullYear()}_${d.getMonth() + 1}_${d.getDate()}_${d.getHours()}-${d.getMinutes()}`;
+};
+
 // run and stop litePlay (must be before startState)
 function runLP() {
     try {
@@ -158,8 +163,7 @@ document.addEventListener(
 
 // save button
 const saveCode = () => {
-    const now = new Date();
-    const datetime = `${now.getFullYear()}_${now.getMonth() + 1}_${now.getDate()}_${now.getHours()}-${now.getMinutes()}`;
+    const datetime = getDatetimeString();
 
     const text = editor.state.doc.toString();
     const blob = new Blob([text], { type: "text/javascript" });
