@@ -71,22 +71,86 @@ function arp(lp: LP): void {
     });
 }
 
+function waitForStart(): Promise<void> {
+    return new Promise((resolve) => {
+        const overlay = document.getElementById("start-overlay")!;
+        const btn = document.getElementById("start-btn")!;
+        btn.addEventListener(
+            "click",
+            () => {
+                overlay.style.display = "none";
+                resolve();
+            },
+            { once: true }
+        );
+    });
+}
+
+// ── Visual state ─────────────────────────────────────────────────────────────
+
+let beatCount = 0;
+let lastBeatMs = 0;
+let rings: { r: number; alpha: number }[] = [];
+
 new p5((sketch: p5) => {
     sketch.setup = async () => {
+        await waitForStart();
         await LitePlay.startEngine();
         sequence(LitePlay);
         arp(LitePlay);
 
-        sketch.createCanvas(400, 400);
-        const heartbeat = (): void => {
-            sketch.fill("red");
-            sketch.rect(20, 20, 60, 60);
+        const cnv = sketch.createCanvas(
+            sketch.windowWidth,
+            sketch.windowHeight - 44
+        );
+        cnv.style("display", "block");
+
+        const onBeat = (lookaheadBeats: number): void => {
+            const delayMs = LitePlay.secs(lookaheadBeats) * 1000;
             setTimeout(() => {
-                sketch.fill("grey");
-                sketch.rect(20, 20, 60, 60);
-            }, 100);
-            LitePlay.sequencer.addCallback(heartbeat);
+                beatCount++;
+                lastBeatMs = sketch.millis();
+                rings.push({ r: 0, alpha: 220 });
+            }, delayMs);
+            LitePlay.sequencer.addCallback(onBeat);
         };
-        LitePlay.sequencer.addCallback(heartbeat);
+        LitePlay.sequencer.addCallback(onBeat);
+    };
+
+    sketch.windowResized = () => {
+        sketch.resizeCanvas(sketch.windowWidth, sketch.windowHeight - 44);
+    };
+
+    sketch.draw = () => {
+        const bpm = LitePlay.getBpm();
+        const beatDuration = (60 / bpm) * 1000; // ms
+        const elapsed = sketch.millis() - lastBeatMs;
+        const phase = Math.min(elapsed / beatDuration, 1); // 0→1 between beats
+
+        const cx = sketch.width / 2;
+        const cy = sketch.height / 2;
+
+        sketch.background(30, 33, 39);
+
+        // ── Expanding rings ───────────────────────────────────────────────────
+        rings = rings.filter((ring) => ring.alpha > 1);
+        for (const ring of rings) {
+            ring.r += 4;
+            ring.alpha *= 0.93;
+            sketch.noFill();
+            sketch.stroke(220, 60, 60, ring.alpha);
+            sketch.strokeWeight(2);
+            sketch.circle(cx, cy, ring.r * 2);
+        }
+
+        // ── Central pulse circle ──────────────────────────────────────────────
+        const pulse = 1 - Math.pow(phase, 2); // fast attack, slow decay
+        const baseR = 60;
+        const pulseR = baseR + pulse * 20;
+        sketch.noStroke();
+        sketch.fill(220, 60, 60, 30 + pulse * 60);
+        sketch.circle(cx, cy, pulseR * 2 + 40);
+        sketch.fill(220, 60, 60, 180 + pulse * 75);
+        sketch.circle(cx, cy, pulseR * 2);
     };
 });

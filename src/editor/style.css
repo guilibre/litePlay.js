@@ -1,99 +1,258 @@
-body {
-    font-size: 18px;
-    margin-top: 2%;
-    margin-bottom: 5%;
-    font-family: sans-serif;
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
 }
 
-div.text {
-    text-align: left;
-    font-size: 20px;
-    margin-left: 0%;
-    color: #282c34;
+html,
+body {
+    margin: 0;
+    padding: 0;
+    height: 100%;
+    background: #1e2127;
+    color: #abb2bf;
+    font-family: sans-serif;
+    font-size: 15px;
 }
+
+/* ── Tab bar ──────────────────────────────────────────── */
+
+.tab-bar {
+    display: flex;
+    align-items: center;
+    background: #21252b;
+    border-bottom: 1px solid #181a1f;
+    padding: 0 12px;
+    height: 44px;
+    gap: 2px;
+    user-select: none;
+}
+
+.tab-logo {
+    font-size: 17px;
+    font-weight: 700;
+    color: #61afef;
+    letter-spacing: 0.5px;
+    margin-right: 16px;
+}
+
+.tab {
+    padding: 6px 18px;
+    color: #7f848e;
+    text-decoration: none;
+    font-size: 14px;
+    border-radius: 4px;
+    border-bottom: 2px solid transparent;
+    transition: color 0.15s;
+}
+
+.tab:hover {
+    color: #dde1e8;
+    text-decoration: none;
+}
+
+.tab-active {
+    color: #dde1e8;
+    border-bottom-color: #4caf50;
+}
+
+.tab-docs {
+    margin-left: auto;
+    font-size: 13px;
+}
+
+/* link colour overrides inside nav */
+.tab-bar a:link,
+.tab-bar a:visited {
+    color: #7f848e;
+}
+.tab-bar a:hover {
+    color: #dde1e8;
+    text-decoration: none;
+}
+.tab-bar a.tab-active:link,
+.tab-bar a.tab-active:visited {
+    color: #dde1e8;
+}
+
+/* ── Page layout ──────────────────────────────────────── */
+
+.page {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 44px);
+    padding: 0;
+}
+
+/* ── Description ──────────────────────────────────────── */
+
+.description {
+    padding: 10px 16px;
+    font-size: 13px;
+    color: #7f848e;
+    background: #21252b;
+    border-bottom: 1px solid #181a1f;
+    flex-shrink: 0;
+}
+
+.description p {
+    margin: 2px 0;
+}
+
+.description p:first-child {
+    font-weight: 700;
+    color: #61afef;
+    margin-bottom: 6px;
+}
+
+.description b {
+    color: #abb2bf;
+}
+
+.description a:link,
+.description a:visited {
+    color: #61afef;
+    text-decoration: none;
+}
+.description a:hover {
+    text-decoration: underline;
+}
+
+/* ── Toolbar ──────────────────────────────────────────── */
+
+.toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    background: #282c34;
+    border-bottom: 1px solid #181a1f;
+    flex-shrink: 0;
+}
+
+.toolbar-sep {
+    width: 1px;
+    height: 22px;
+    background: #3e4451;
+    margin: 0 4px;
+}
+
+.toolbar-hint {
+    margin-left: auto;
+    font-size: 12px;
+    color: #4b5263;
+}
+
+kbd {
+    background: #2c313a;
+    border: 1px solid #3e4451;
+    border-radius: 3px;
+    padding: 1px 5px;
+    font-size: 11px;
+    font-family: monospace;
+    color: #7f848e;
+}
+
+/* ── Buttons ──────────────────────────────────────────── */
 
 .button {
-    padding: 0.2% 100px;
-    transition: filter 0.5s ease;
+    padding: 5px 16px;
+    border: 1px solid #3e4451;
+    border-radius: 4px;
+    background: #2c313a;
+    color: #abb2bf;
+    font-size: 13px;
+    font-weight: 600;
     cursor: pointer;
-    margin-top: 0.1%;
-    border-radius: 0;
+    transition:
+        background 0.15s,
+        color 0.15s;
+    white-space: nowrap;
 }
 
 .button:hover {
-    filter: brightness(0.8);
+    background: #3e4451;
+    color: #dde1e8;
 }
 
-.editor-row {
-    display: flex;
-    width: 100%;
-    margin: 0 auto;
-    height: 200px;
-    margin-top: 0.1%;
+.btn-run {
+    background: #2d4a2d;
+    color: #7ec87e;
+    border-color: #3a6b3a;
 }
+.btn-run:hover {
+    background: #3a6b3a;
+    color: #a8e0a8;
+}
+
+.btn-stop {
+    background: #4a2d2d;
+    color: #c87e7e;
+    border-color: #6b3a3a;
+}
+.btn-stop:hover {
+    background: #6b3a3a;
+    color: #e0a8a8;
+}
+
+.btn-rec {
+    background: #4a2d2d;
+    color: #e06060;
+    border-color: #7a3a3a;
+}
+.btn-rec:hover {
+    background: #7a3a3a;
+    color: #f08080;
+}
+
+.ready-green {
+    background: #3a6b3a !important;
+    color: #a8e0a8 !important;
+    border-color: #4caf50 !important;
+}
+
+.ready-red {
+    background: #7a3a3a !important;
+    color: #f08080 !important;
+    border-color: #af4c4c !important;
+}
+
+/* ── Editor ───────────────────────────────────────────── */
 
 .cm-container {
-    height: 100%;
+    flex: 1;
+    min-height: 0;
+    overflow: hidden;
 }
 
 .cm-editor {
     width: 100%;
-    height: 500px;
-    font-size: 18px;
-    font-family: monospace;
+    height: 100%;
+    font-size: 15px;
+    font-family: "Fira Mono", "Cascadia Code", "Consolas", monospace;
     text-align: left;
-    margin: 0; /* Removed auto margin so it touches the right side */
 }
 
 .cm-scroller {
     overflow: auto;
 }
 
+/* ── Console ──────────────────────────────────────────── */
+
 .console {
-    flex: 5;
+    flex-shrink: 0;
     width: 100%;
-    height: 200px;
-    font-size: 18px;
-    font-family: monospace;
-    background: #282c34;
-    color: #fff;
+    height: 160px;
+    font-size: 13px;
+    font-family: "Fira Mono", "Cascadia Code", "Consolas", monospace;
+    background: #181a1f;
+    color: #7ec87e;
     border: none;
+    border-top: 1px solid #181a1f;
     resize: none;
-    margin: 0 auto; /* Centers it to align with the row above */
-    display: block; /* Required for margin: 0 auto to work on a textarea */
-    box-sizing: border-box;
+    padding: 8px 12px;
 }
 
-.ready-green {
-    background-color: #4caf50;
-    color: white;
-    font-weight: bold;
-    transition: background-color 1s ease;
-}
-
-.ready-red {
-    background-color: #a84732;
-    color: white;
-    font-weight: bold;
-    transition: background-color 1s ease;
-}
-
-a:link {
-    color: green;
-    text-decoration: none;
-}
-
-a:visited {
-    color: green;
-    text-decoration: none;
-}
-
-a:hover {
-    color: green;
-    text-decoration: underline;
-}
-
-a:active {
-    color: red;
-    text-decoration: underline;
+.console::placeholder {
+    color: #3e4451;
 }

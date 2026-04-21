@@ -1,6 +1,17 @@
 {
     "bracketSpacing": true,
     "endOfLine": "lf",
+    "overrides": [
+        {
+            "files": ["*.html"],
+            "options": {
+                "bracketSameLine": true,
+                "htmlWhitespaceSensitivity": "css",
+                "printWidth": 120,
+                "singleAttributePerLine": false
+            }
+        }
+    ],
     "printWidth": 80,
     "semi": true,
     "singleQuote": false,
