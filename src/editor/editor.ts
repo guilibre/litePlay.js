@@ -130,7 +130,9 @@ const startState = EditorState.create({
                 {
                     key: "Mod-.",
                     run: () => {
-                        stopLP();
+                        stopLP().catch((err) =>
+                            console.error("Failed to stop:", err)
+                        );
                         return true;
                     },
                 },

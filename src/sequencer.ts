@@ -75,7 +75,10 @@ export const sequencer: Sequencer = {
                 setTimeout(this.click.bind(this, ref));
             }
         } catch (err) {
-            console.error("Sequencer error:", err);
+            console.error(
+                `[sequencer] tick error at beat=${this.time.toFixed(3)}:`,
+                err instanceof Error ? err.message : String(err)
+            );
             this.stop();
         }
     },
@@ -160,10 +163,12 @@ export const sequencer: Sequencer = {
     play() {
         if (!this.clickOn) {
             this.clickOn = true;
+            console.log(`[sequencer] start: ${this.seqList.length} track(s)`);
             this.click(audioClock());
         }
     },
     stop() {
+        console.log("[sequencer] stop");
         this.clickOn = false;
         this.seqList.forEach((v) => {
             v.n = 0;

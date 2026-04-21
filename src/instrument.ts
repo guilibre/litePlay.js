@@ -52,6 +52,9 @@ export class Instrument {
         this.howLong = 1;
         this.on = new Uint8Array(128);
         this.instr = instr;
+        console.log(
+            `[instrument] created: pgm=${pgm} chn=${this.chn} isDrums=${isDrums}`
+        );
     }
 
     _clamp(v: number, min = 0, max = 1): number {
@@ -230,12 +233,22 @@ export const sample: SampleObj = {
     load(what: string, fo = 60, bpm = 0) {
         this.fo = fo;
         this.bpm = bpm;
-        loadToFs(what, "localfile").then(() => {
-            csoundProxy.inputMessage(
-                "i2 0 0" + ' "localfile" ' + this.fo + " " + this.number
-            );
-            if (bpm > 0) csoundProxy.tableSet(15, this.number, getBpm() / bpm);
-        });
+        console.log(`[sample] loading: ${what} (fo=${fo}, bpm=${bpm})`);
+        loadToFs(what, "localfile")
+            .then(() => {
+                console.log(`[sample] loaded: ${what}`);
+                csoundProxy.inputMessage(
+                    "i2 0 0" + ' "localfile" ' + this.fo + " " + this.number
+                );
+                if (bpm > 0)
+                    csoundProxy.tableSet(15, this.number, getBpm() / bpm);
+            })
+            .catch((err: unknown) => {
+                console.error(
+                    `[sample] failed to load ${what}:`,
+                    err instanceof Error ? err.message : String(err)
+                );
+            });
     },
     loop(start: number, end: number) {
         csoundProxy.tableSet(11, this.number, start);

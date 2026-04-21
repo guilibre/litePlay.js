@@ -43,7 +43,7 @@ export const rnd = (min: number, max: number): number =>
 
 export const rndInt = (min: number, max: number): number =>
     Math.floor(
-        Math.random() * (Math.floor(max) - Math.ceil(min)) + Math.ceil(min)
+        Math.random() * (Math.floor(max) - Math.ceil(min) + 1) + Math.ceil(min)
     );
 
 export const choose = <T>(array: T[]): T =>

@@ -1,8 +1,8 @@
 import { Csound } from "@csound/browser";
 
 export interface CsoundInstance {
-    midiMessage(stat: number, b1: number, b2: number): void;
-    tableSet(table: number, index: number, value: number): void;
+    midiMessage(stat: number, b1: number, b2: number): Promise<void>;
+    tableSet(table: number, index: number, value: number): Promise<void>;
     inputMessage(score: string): Promise<void>;
     compileCSD(csd: string): Promise<number>;
     start(): Promise<void>;
@@ -21,6 +21,22 @@ export const csoundProxy = new Proxy({} as CsoundInstance, {
             throw new Error(
                 "Csound engine not started. Call startEngine() first."
             );
+        // tableSet is missing from @csound/browser dist; implement via tableCopyOut + tableCopyIn
+        if (prop === "tableSet") {
+            const cs = csound as unknown as Record<
+                string,
+                (...a: unknown[]) => unknown
+            >;
+            return async (table: number, index: number, value: number) => {
+                const arr = (await cs["tableCopyOut"](table)) as
+                    | Float64Array
+                    | undefined;
+                if (arr) {
+                    arr[index] = value;
+                    await cs["tableCopyIn"](table, arr);
+                }
+            };
+        }
         const val = (csound as unknown as Record<string | symbol, unknown>)[
             prop
         ];
@@ -49,15 +65,19 @@ async function loadToFs(src: string, dest: string): Promise<void> {
 export async function startEngine(): Promise<void> {
     if (csound == null) {
         try {
+            console.log("[engine] initializing Csound...");
             csound = (await Csound()) as unknown as CsoundInstance;
             audio_context = await csound!.getAudioContext();
+            console.log(`[engine] audio context state: ${audio_context.state}`);
             await csound!.setOption("-odac");
             await csound!.setOption("-M0");
+            console.log("[engine] loading soundfont...");
             await loadToFs(sfontUrl, "gm.sf2");
             const csdText = await fetchText(csdUrl);
             const result = await csound!.compileCSD(csdText);
             if (result !== 0) throw new Error("Csound CSD compilation failed.");
             await csound!.start();
+            console.log("[engine] Csound started successfully.");
         } catch (err) {
             csound = null;
             throw err;
@@ -74,7 +94,14 @@ export function midi(stat: number, b1: number, b2: number): void {
 }
 
 export function midiProgram(n: number, chn = 1): void {
-    if (chn >= 1 && chn <= 16) csoundProxy.midiMessage(chn + 191, n, 0);
+    if (chn >= 1 && chn <= 16) {
+        console.log(`[engine] midiProgram: chn=${chn} pgm=${n}`);
+        csoundProxy.midiMessage(chn + 191, n, 0);
+    } else {
+        console.error(
+            `[engine] midiProgram: invalid channel ${chn} (must be 1-16)`
+        );
+    }
 }
 
 export async function reset(): Promise<void> {

@@ -24,6 +24,7 @@ export let defInstr: Instrument;
 
 export function setDefInstr(i: Instrument): void {
     defInstr = i;
+    console.log(`[events] default instrument set: pgm=${i.pgm} chn=${i.chn}`);
 }
 
 export const eventList: EventListObj = {
@@ -114,9 +115,17 @@ export function play(
         return theList[0];
     }
     if (theList.length > 0) {
+        console.log(`[events] play: scheduling ${theList.length} event(s)`);
         eventList.create().play(0, theList as SeqEvent[]);
         return theList as SeqEvent[];
     }
+    if (!defInstr) {
+        console.error(
+            "[events] play() called but no default instrument set. Use setDefInstr() first."
+        );
+        throw new Error("No default instrument set. Call setDefInstr() first.");
+    }
+    console.log(`[events] play: default instrument pgm=${defInstr.pgm}`);
     defInstr.play();
     return defInstr;
 }
@@ -129,5 +138,10 @@ export function instrument(instr: Instrument | SeqEvent[]): Instrument {
 }
 
 export function stop(): void {
+    if (!defInstr) {
+        console.error("[events] stop() called but no default instrument set.");
+        return;
+    }
+    console.log(`[events] stop: default instrument pgm=${defInstr.pgm}`);
     defInstr.stop();
 }
