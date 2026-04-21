@@ -2,18 +2,37 @@
 <html lang="en">
     <head>
         <meta charset="utf-8" />
-      <script type="module" crossorigin src="/litePlay.js/assets/sequencer-B1MxjTSY.js"></script>
-      <link rel="modulepreload" crossorigin href="/litePlay.js/assets/litePlay-CVpBe5Bn.js">
-      <link rel="stylesheet" crossorigin href="/litePlay.js/assets/sequencer-CZorOPYv.css">
+      <script type="module" crossorigin src="/litePlay.js/assets/sequencer-DlLfTOpn.js"></script>
+      <link rel="modulepreload" crossorigin href="/litePlay.js/assets/editor-CP7ptBPm.js">
+      <link rel="stylesheet" crossorigin href="/litePlay.js/assets/editor-B9GFtZJ2.css">
+      <link rel="stylesheet" crossorigin href="/litePlay.js/assets/sequencer-DvB63RYq.css">
     </head>
     <body>
         <nav class="tab-bar">
+            <span class="tab-logo">litePlay</span>
             <a class="tab" href="../../">Editor</a>
             <a class="tab tab-active" href="./">Sequencer</a>
+            <a class="tab tab-docs" href="https://g-ubimus.github.io/litePlay.docs/" target="_blank">Docs ↗</a>
         </nav>
         <div id="start-overlay">
             <button id="start-btn">&#9654; Start Sequencer</button>
         </div>
-        <main></main>
+        <div class="seq-layout">
+            <div id="seq-canvas"></div>
+            <div class="seq-editor-panel">
+                <div class="toolbar">
+                    <button class="button btn-run" id="seq-run-btn">&#9654; RUN</button>
+                    <button class="button btn-stop" id="seq-stop-btn">&#9724; STOP</button>
+                    <div class="toolbar-hint"><kbd>Ctrl+Enter</kbd> run &nbsp; <kbd>Ctrl+.</kbd> stop</div>
+                </div>
+                <div id="seq-editor-container" class="cm-container"></div>
+                <textarea
+                    id="seq-console"
+                    autocomplete="off"
+                    readonly
+                    class="console"
+                    placeholder="Console output..."></textarea>
+            </div>
+        </div>
     </body>
 </html>
